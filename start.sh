@@ -1,0 +1,1 @@
+http-server ./ -c-1 -a localhost -p 8866 -o ./examples/index.html#webgl_geometry_cube

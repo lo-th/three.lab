@@ -1,0 +1,6 @@
+{
+	"webgl": [
+		"webgl_geometry_cube",
+		"webgl_loader_gltf"
+	]
+}
