@@ -131,6 +131,7 @@
 			}
 
 			const randomUV = `
+			
 				float directNoise(vec2 p){
 				    vec2 ip = floor(p);
 				    vec2 u = fract(p);
@@ -146,8 +147,7 @@
 
 				vec4 textureNoTile( sampler2D mapper, in vec2 uv ){
 
-				    // sample variation pattern    
-				    //float k = texture2D( noise, 0.005*uv ).x; // cheap (cache friendly) lookup    
+				    // sample variation pattern
 				    float k = directNoise( uv );
 				    
 				    // compute index    
