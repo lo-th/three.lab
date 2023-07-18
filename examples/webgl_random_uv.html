@@ -34,7 +34,9 @@
 			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-			let camera, scene, renderer;
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+			let camera, scene, renderer, gui, material;
 
 			init();
 			render();
@@ -72,10 +74,10 @@
 						loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) )
 						loader.load( 'ShaderBall2.glb', function ( gltf ) {
 
-							const shaderBall = gltf.scene.children[0]
+							const shaderBall = gltf.scene.children[0];
 							scene.add( shaderBall );
 
-							const material = shaderBall.material;
+							material = shaderBall.material;
 							material.map = map;
 
 							material.onBeforeCompile = function ( shader ) {
@@ -107,6 +109,26 @@
 
 				window.addEventListener( 'resize', onWindowResize );
 
+				//createGUI()
+
+			}
+
+			function createGUI() {
+
+				const setting = {
+					get 'Enabled'() {
+						return true
+							//return renderer.localClippingEnabled;
+						},
+						set 'Enabled'( v ) {
+							//renderer.localClippingEnabled = v;
+						},
+
+				}
+
+				gui = new GUI();
+				gui.add( setting, 'Enabled' );
+			
 			}
 
 			function onWindowResize() {
@@ -130,6 +152,12 @@
 
 			const randomUV = `
 
+			#ifdef USE_NOISE
+			     uniform sampler2D noiseMap;
+			#endif
+
+			uniform float randomUv;
+
 			float directNoise(vec2 p){
 			    vec2 ip = floor(p);
 			    vec2 u = fract(p);
@@ -146,7 +174,12 @@
 			vec4 textureNoTile( sampler2D mapper, in vec2 uv ){
 
 			    // sample variation pattern
-			    float k = directNoise( uv );
+			    float k = 0.0;
+			    #ifdef USE_NOISE
+			        k = texture2D( noiseMap, 0.005*uv ).x;
+			    #else
+			        k = directNoise( uv );
+			    #endif
 			    
 			    // compute index    
 			    float index = k*8.0;
