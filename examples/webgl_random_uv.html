@@ -36,7 +36,7 @@
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			let camera, scene, renderer, gui, material;
+			let camera, scene, renderer, gui, material, uniforms;
 
 			init();
 			render();
@@ -55,6 +55,11 @@
 				map.colorSpace = THREE.SRGBColorSpace;
 				map.wrapS = map.wrapT = THREE.RepeatWrapping;
 				map.repeat.set(20,20);
+
+				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
+				//noise.colorSpace = THREE.SRGBColorSpace;
+				//noise.wrapS = map.wrapT = THREE.RepeatWrapping;
+				//noise.repeat.set(20,20);
 
 				new RGBELoader()
 					.setPath( 'textures/equirectangular/' )
@@ -82,12 +87,22 @@
 
 							material.onBeforeCompile = function ( shader ) {
 
+								shader.uniforms['noiseMap'] = { value: noise };
+								shader.uniforms['enableRandom'] = { value: 1 };
+								shader.uniforms['useNoiseMap'] = { value: 1 };
+								shader.uniforms['useSuslikMethod'] = { value: 0 };
+								shader.uniforms['debugNoise'] = { value: 0 };
+
 								shader.fragmentShader = shader.fragmentShader.replace( '#include <clipping_planes_pars_fragment>', '#include <clipping_planes_pars_fragment>' + randomUV );
 								shader.fragmentShader = shader.fragmentShader.replace( '#include <map_fragment>', mapRemplace );
+
+								uniforms = shader.uniforms;
 
 							}
 
 							render();
+
+							createGUI();
 
 						} );
 
@@ -109,25 +124,31 @@
 
 				window.addEventListener( 'resize', onWindowResize );
 
-				//createGUI()
-
 			}
 
 			function createGUI() {
 
 				const setting = {
-					get 'Enabled'() {
-						return true
-							//return renderer.localClippingEnabled;
-						},
-						set 'Enabled'( v ) {
-							//renderer.localClippingEnabled = v;
-						},
+
+					get 'Enabled'() { return uniforms.enableRandom.value ? true : false; },
+					set 'Enabled'( v ) {  uniforms.enableRandom.value = v ? 1 : 0; render(); },
+
+					get 'UseNoiseMap'() { return uniforms.useNoiseMap.value ? true : false; },
+					set 'UseNoiseMap'( v ) {  uniforms.useNoiseMap.value = v ? 1 : 0; render(); },
+
+					get 'SuslikMethod'() { return uniforms.useSuslikMethod.value ? true : false; },
+					set 'SuslikMethod'( v ) {  uniforms.useSuslikMethod.value = v ? 1 : 0; render(); },
+
+					get 'DebugNoise'() { return uniforms.debugNoise.value ? true : false; },
+					set 'DebugNoise'( v ) {  uniforms.debugNoise.value = v ? 1 : 0; render(); },
 
 				}
 
 				gui = new GUI();
 				gui.add( setting, 'Enabled' );
+				gui.add( setting, 'UseNoiseMap' );
+				gui.add( setting, 'SuslikMethod' );
+				gui.add( setting, 'DebugNoise' );
 			
 			}
 
@@ -152,11 +173,11 @@
 
 			const randomUV = `
 
-			#ifdef USE_NOISE
-			     uniform sampler2D noiseMap;
-			#endif
-
-			uniform float randomUv;
+			uniform sampler2D noiseMap;
+			uniform float enableRandom;
+			uniform float useNoiseMap;
+			uniform float debugNoise;
+			uniform float useSuslikMethod;
 
 			float directNoise(vec2 p){
 			    vec2 ip = floor(p);
@@ -175,22 +196,23 @@
 
 			    // sample variation pattern
 			    float k = 0.0;
-			    #ifdef USE_NOISE
-			        k = texture2D( noiseMap, 0.005*uv ).x;
-			    #else
-			        k = directNoise( uv );
-			    #endif
+			    if( useNoiseMap == 1.0 ) k = texture2D( noiseMap, 0.005*uv ).x;
+			    else k = directNoise( uv );
 			    
 			    // compute index    
 			    float index = k*8.0;
 			    float f = fract( index );
+			    float ia = 0.0;
+			    float ib = 0.0;
 
-			    float ia = floor( index );
-			    float ib = ia + 1.0;
-			    // or
-			    //float ia = floor(index+0.5); // suslik's method (see comments)
-			    //float ib = floor(index);
-			    //f = min(f, 1.0-f)*2.0;
+			    if( useSuslikMethod == 1.0 ){
+			    	ia = floor(index+0.5);
+			    	ib = floor(index);
+			    	f = min(f, 1.0-f)*2.0;
+			    } else {
+			    	ia = floor( index );
+			    	ib = ia + 1.0;
+			    }
 
 			    // offsets for the different virtual patterns    
 			    vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash    
@@ -203,6 +225,10 @@
 			    // sample the two closest virtual patterns    
 			    vec4 cola = textureGrad( mapper, uv + offa, dx, dy );
 			    vec4 colb = textureGrad( mapper, uv + offb, dx, dy );
+			    if( debugNoise == 1.0 ){
+			    	cola = vec4( 0.1,0.0,0.0,1.0 );
+			    	colb = vec4( 0.0,0.0,1.0,1.0 );
+			    }
 
 			    // interpolate between the two virtual patterns    
 			    return mix( cola, colb, smoothstep(0.2,0.8,f-0.1*sum(cola-colb)) );
@@ -212,7 +238,8 @@
 			const mapRemplace = `
 			#ifdef USE_MAP
 
-				diffuseColor *= textureNoTile( map, vMapUv );
+				if( enableRandom == 1.0 ) diffuseColor *= textureNoTile( map, vMapUv );
+				else diffuseColor *= texture2D( map, vMapUv );
 
 			#endif
 			`
