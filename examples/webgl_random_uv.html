@@ -51,15 +51,19 @@
 
 				scene = new THREE.Scene();
 
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1;
+				container.appendChild( renderer.domElement )
+
 				const map = new THREE.TextureLoader().load( 'textures/jade.jpg' );
 				map.colorSpace = THREE.SRGBColorSpace;
 				map.wrapS = map.wrapT = THREE.RepeatWrapping;
 				map.repeat.set(20,20);
 
 				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
-				//noise.colorSpace = THREE.SRGBColorSpace;
-				//noise.wrapS = map.wrapT = THREE.RepeatWrapping;
-				//noise.repeat.set(20,20);
 
 				new RGBELoader()
 					.setPath( 'textures/equirectangular/' )
@@ -69,6 +73,7 @@
 
 						scene.background = texture;
 						scene.environment = texture;
+						scene.backgroundBlurriness = 0.03;
 
 						render();
 
@@ -108,12 +113,7 @@
 
 					} );
 
-				renderer = new THREE.WebGLRenderer( { antialias: true } );
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.toneMapping = THREE.ACESFilmicToneMapping;
-				renderer.toneMappingExposure = 1;
-				container.appendChild( renderer.domElement );
+				;
 
 				const controls = new OrbitControls( camera, renderer.domElement );
 				controls.addEventListener( 'change', render ); // use if there is no animation loop
