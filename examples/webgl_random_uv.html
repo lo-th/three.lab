@@ -62,6 +62,11 @@
 				map.colorSpace = THREE.SRGBColorSpace;
 				map.wrapS = map.wrapT = THREE.RepeatWrapping;
 				map.repeat.set(20,20);
+				map.flipY = false
+
+				const aoMap = new THREE.TextureLoader().load( 'textures/shaderBall.jpg' );
+				map.colorSpace = THREE.SRGBColorSpace;
+				aoMap.flipY = false
 
 				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
 
@@ -88,6 +93,9 @@
 
 							material = shaderBall.material;
 							material.map = map;
+							material.aoMap = aoMap;
+
+							shaderBall.children[0].material.aoMap = aoMap;
 
 							material.onBeforeCompile = function ( shader ) {
 
@@ -144,6 +152,8 @@
 				}
 
 				gui = new GUI();
+				gui.add( material, 'roughness', 0, 1, 0.01 ).onChange(render);
+				gui.add( material, 'metalness', 0, 1, 0.01 ).onChange(render);
 				gui.add( setting, 'Enabled' );
 				gui.add( setting, 'UseNoiseMap' );
 				gui.add( setting, 'SuslikMethod' );
