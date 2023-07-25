@@ -1,6 +1,7 @@
 {
 	"webgl": [
-		"webgl_geometry_cube",
-		"webgl_random_uv"
+		"webgl_random_uv",
+		"webgl_disolve",
+		"webgl_animation_skinning_blending"
 	]
 }
