@@ -43,26 +43,15 @@
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-			let scene, renderer, camera, stats, orbitControls;
+			let scene, renderer, camera, floor, stats, orbitControls;
 			let group, followGroup, model, skeleton, mixer, clock;
+		
+			let actions;
 
-			const crossFadeControls = [];
-
-			let idleAction, walkAction, runAction;
-			//let idleWeight, walkWeight, runWeight;
-			let actions; 
-			let actionsMap; 
 			let settings = {
-				'modify idle weight': 1.0,
-				'modify walk weight': 0.0,
-				'modify run weight': 0.0,
-				'modify time scale': 1.0
+				show_skeleton:false,
+				fixe_transition: true,
 			};
-
-
-
-			let singleStepMode = false;
-			let sizeOfNextStep = 0;
 
 			const PI = Math.PI;
 			const PI90 = Math.PI / 2;
@@ -71,15 +60,20 @@
 			const controls = {
 
 				key:[0,0],
-				walkDirection : new THREE.Vector3(),
-				rotateAngle : new THREE.Vector3(0, 1, 0),
+				ease : new THREE.Vector3(),
+				position : new THREE.Vector3(),
+				up : new THREE.Vector3(0, 1, 0),
 				rotate: new THREE.Quaternion(),
 				current:'Idle',
 				fadeDuration:0.2,
 				runVelocity:5,
 				walkVelocity:2,
 				rotateSpeed:0.1,
+				floorDecale:0,
+
 			};
+
+
 
 			init();
 
@@ -88,7 +82,7 @@
 				const container = document.getElementById( 'container' );
 
 				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-				camera.position.set( 0, 2, - 3 );
+				camera.position.set( 0, 2, - 5 );
 				//camera.lookAt( 0, 1, 0 );
 
 
@@ -104,39 +98,24 @@
 				followGroup = new THREE.Group();
 				scene.add(followGroup);
 
-				/*8const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x8d8d8d, 0.1 );
+				/*const hemiLight = new THREE.HemisphereLight( 0xffffff, 0xb3602b, 0.5 );
 				hemiLight.position.set( 0, 20, 0 );
 				scene.add( hemiLight );*/
 
 				const dirLight = new THREE.DirectionalLight( 0xffffff, 5 );
 				dirLight.position.set( - 2, 5, - 3 );
 				dirLight.castShadow = true;
-				dirLight.shadow.camera.top = 2;
-				dirLight.shadow.camera.bottom = - 2;
-				dirLight.shadow.camera.left = - 2;
-				dirLight.shadow.camera.right = 2;
-				dirLight.shadow.camera.near = 3;
-				dirLight.shadow.camera.far = 8;
+				let cam = dirLight.shadow.camera
+				cam.top = cam.right = 2;
+				cam.bottom = cam.left = - 2;
+				cam.near = 3;
+				cam.far = 8;
 				dirLight.shadow.bias = -0.005;
 				dirLight.shadow.radius = 4;
 				followGroup.add( dirLight );
 				followGroup.add( dirLight.target );
 
-				//scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
-
-								
-
-				new RGBELoader()
-					.setPath( 'textures/equirectangular/' )
-					.load( 'alien.hdr', function ( texture ) {
-
-						texture.mapping = THREE.EquirectangularReflectionMapping;
-						scene.environment = texture;
-
-						loadModel()
-						addFloor()
-
-					})
+				//scene.add( new THREE.CameraHelper( cam ) );
 
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -146,39 +125,58 @@
 
 				orbitControls = new OrbitControls( camera, renderer.domElement );
 				orbitControls.target.set( 0, 1, 0 );
-				orbitControls.enableDamping = true
-				orbitControls.enablePan = false
-				orbitControls.maxPolarAngle = Math.PI / 2 - 0.05
+				orbitControls.enableDamping = true;
+				orbitControls.enablePan = false;
+				orbitControls.maxPolarAngle = PI90 - 0.05;
 				orbitControls.update();
 
-				stats = new Stats();
-				container.appendChild( stats.dom );
+				// EVENTS
 
 				window.addEventListener( 'resize', onWindowResize );
 				document.addEventListener( 'keydown', onKeyDown );
 				document.addEventListener( 'keyup', onKeyUp );
 
+
+				// DEMO
+
+				new RGBELoader()
+					.setPath( 'textures/equirectangular/' )
+					.load( 'alien.hdr', function ( texture ) {
+
+						texture.mapping = THREE.EquirectangularReflectionMapping;
+						scene.environment = texture;
+
+						loadModel();
+						addFloor();
+
+					})
+
 			}
 
 			function addFloor() {
 
-				let rep = 50;
+				let size = 50;
+				let repeat = 25;
 
-				const floor = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Diffuse.jpg' );
-				floor.colorSpace = THREE.SRGBColorSpace;
-				floor.repeat.set( rep, rep );
-				floor.wrapS = floor.wrapT = THREE.RepeatWrapping;
+				const floorT = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Diffuse.jpg' );
+				floorT.colorSpace = THREE.SRGBColorSpace;
+				floorT.repeat.set( repeat, repeat );
+				floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping;
 
 				const floorN = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Normal.jpg' );
-				floorN.repeat.set( rep, rep );
+				floorN.repeat.set( repeat, repeat );
 				floorN.wrapS = floorN.wrapT = THREE.RepeatWrapping;
 
-				let floorMat = new THREE.MeshStandardMaterial( { normalMap:floorN, normalScale:new THREE.Vector2(2,2), color: 0x404040, depthWrite: false, roughness:1.0 } )
+				let mat = new THREE.MeshStandardMaterial( { map:floorT, normalMap:floorN, normalScale:new THREE.Vector2(-2,-2), color: 0x404040, depthWrite: false, roughness:1.0 } )
 
-				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), floorMat );
-				mesh.rotation.x = - Math.PI / 2;
-				mesh.receiveShadow = true;
-				scene.add( mesh );
+				let g = new THREE.PlaneGeometry( size, size, 50, 50 );
+				g.rotateX( -PI90 );
+
+				floor = new THREE.Mesh( g, mat );
+				floor.receiveShadow = true;
+				scene.add( floor );
+
+				controls.floorDecale = (size / repeat);
 
 			}
 
@@ -190,29 +188,29 @@
 
 					model = gltf.scene;
 					group.add( model );
+					model.rotation.y = PI;
+					group.rotation.y = PI;
 
 					model.traverse( function ( object ) {
 
 						if ( object.isMesh ){
-						    if(object.name == 'vanguard_Mesh'){
+						    if( object.name == 'vanguard_Mesh' ){
 						    	object.castShadow = true;
 								object.receiveShadow = true;
 								//object.material = new THREE.MeshStandardMaterial()
 								object.material.shadowSide = THREE.DoubleSide;
 								object.material.envMapIntensity = 0.5;
-								object.material.metalness = 0.5;
-								object.material.roughness = 0.1;
-								//object.material.side = THREE.DoubleSide;
-								
+								object.material.metalness = 1.0;
+								object.material.roughness = 0.2;
 								object.material.color.set(1,1,1);
 								object.material.metalnessMap = object.material.map;
 								//object.material.envMap = scene.environment
 						    } else {
-						    	object.material.metalness = 0;
+						    	object.material.metalness = 1;
 								object.material.roughness = 0;
 								object.material.transparent = true;
 								object.material.opacity = 0.8;
-								object.material.color.set(0,0,0);
+								object.material.color.set(1,1,1);
 						    }
 						}
 
@@ -226,7 +224,7 @@
 
 					//
 
-					//createPanel();
+					createPanel();
 
 					//
 
@@ -234,362 +232,103 @@
 
 					mixer = new THREE.AnimationMixer( model );
 
-					idleAction = mixer.clipAction( animations[ 0 ] );
-					walkAction = mixer.clipAction( animations[ 3 ] );
-					runAction = mixer.clipAction( animations[ 1 ] );
+					actions = {
+						Idle:mixer.clipAction( animations[ 0 ] ),
+						Walk:mixer.clipAction( animations[ 3 ] ),
+						Run:mixer.clipAction( animations[ 1 ] )
+					};
 
-					actionsMap = {
-						Idle:idleAction,
-						Walk:walkAction,
-						Run:runAction
-					}
-
-					actions = [ idleAction, walkAction, runAction ];
-
-					activateAllActions();
+					actions.Idle.play();
 
 					animate();
 
-				} );
+				});
 
 			}
 
 			function updateCharacter( delta ) {
 
-				const key = controls.key
+				const key = controls.key;
+				const up = controls.up;
+				const ease = controls.ease;
+				const rotate = controls.rotate;
+				const position = controls.position;
+				const azimut = orbitControls.getAzimuthalAngle();
 
 				let active = key[0] === 0 && key[1] === 0 ? false : true;
+				let play = active ? (key[2] ? 'Run' : 'Walk') : 'Idle';
 
-				let play = '';
-		        if (active) {
-		            play = key[2] ? 'Run' : 'Walk'
-		        } else {
-		            play = 'Idle'
-		        }
+		        // change animation
 
 		        if ( controls.current != play ){
 
-		        	const toPlay = actionsMap[play];
-		            const current = actionsMap[controls.current];
+		        	const toPlay = actions[play];
+		            const current = actions[controls.current];
 		            controls.current = play;
 
-		            setWeight( toPlay, 1.0 );
-		            current.fadeOut(controls.fadeDuration);
-		            toPlay.reset().fadeIn( controls.fadeDuration ).play();
-		        	
+		            if(settings.fixe_transition){
+		            	setWeight( toPlay, 1.0 );
+			            current.fadeOut(controls.fadeDuration);
+			            toPlay.reset().fadeIn( controls.fadeDuration ).play();
+		            }else{
+		            	setWeight( toPlay, 1.0 );
+			            current.fadeOut(controls.fadeDuration);
+			            toPlay.reset().fadeIn( controls.fadeDuration ).play();
+		            }
 
 		        }
 
+		        // move object
 
-		        if ( controls.current == 'Run' || controls.current == 'Walk' ) {
+		        if ( controls.current !== 'Idle' ) {
 
-		         	// calculate towards camera direction
-		         	let angle = Math.atan2( camera.position.x - group.position.x, camera.position.z - group.position.z )
-		         	let dir = 0
-		         	if( key[0]!==0 && key[1]!==0 ){
-		         		if( key[0]>0 ) dir = PI45 * key[1];
-		         		else dir = (PI45 + PI90) * key[1];
-		         	} else {
-		         		if(key[0]<0) dir = PI
-		         		if(key[1]!==0) dir = PI90*key[1]
-		         	} 
+		            // run/walk velocity
+		            let velocity = controls.current == 'Run' ? controls.runVelocity : controls.walkVelocity;
 
-		            controls.rotate.setFromAxisAngle(controls.rotateAngle, angle + dir);
-		            group.quaternion.rotateTowards(controls.rotate, controls.rotateSpeed )
+		            // direction with key
+		            ease.set( key[1], 0, key[0] ).multiplyScalar( velocity * delta );
 
-		            // calculate direction
-		            camera.getWorldDirection(controls.walkDirection)
-		            controls.walkDirection.y = 0
-		            controls.walkDirection.normalize()
-		            controls.walkDirection.applyAxisAngle(controls.rotateAngle, dir)
-
-			        // run/walk velocity
-			        const velocity = controls.current == 'Run' ? controls.runVelocity : controls.walkVelocity
-			        const moveX = controls.walkDirection.x * velocity * delta
-		            const moveZ = controls.walkDirection.z * velocity * delta
-		            group.position.x += moveX
-		            group.position.z += moveZ
-
-		            camera.position.x += moveX
-		            camera.position.z += moveZ
-
-		            orbitControls.target.copy( group.position ).add({x:0, y:1, z:0})
+		            // calculate camera direction
+		            let angle = unwrapRad( Math.atan2( ease.x, ease.z ) + azimut );
+		            rotate.setFromAxisAngle( up, angle );
 		            
+		            // apply camera angle on ease
+		            controls.ease.applyAxisAngle( up, azimut );
 
-		            followGroup.position.copy( group.position )
+		            position.add( ease );
+		            camera.position.add( ease );
+
+		            group.position.copy( position );
+		            group.quaternion.rotateTowards( rotate, controls.rotateSpeed );
+
+		            orbitControls.target.copy( position ).add({x:0, y:1, z:0});
+		            followGroup.position.copy( position );
+
+		            // decale floor at infinie
+		            let dx = ( position.x - floor.position.x );
+		            let dz = ( position.z - floor.position.z );
+		            if( Math.abs(dx) > controls.floorDecale ) floor.position.x += dx;
+		            if( Math.abs(dz) > controls.floorDecale ) floor.position.z += dz;
 
 			    }
 
-
-				// Update the animation mixer, the stats panel, and render this frame
-
 				mixer.update( delta );
-				orbitControls.update()
+				orbitControls.update();
 
+			}
+
+			function unwrapRad(r) {
+				return Math.atan2(Math.sin(r), Math.cos(r));
 			}
 
 			function createPanel() {
 
 				const panel = new GUI( { width: 310 } );
 
-				const folder1 = panel.addFolder( 'Visibility' );
-				const folder2 = panel.addFolder( 'Activation/Deactivation' );
-				const folder3 = panel.addFolder( 'Pausing/Stepping' );
-				const folder4 = panel.addFolder( 'Crossfading' );
-				const folder5 = panel.addFolder( 'Blend Weights' );
-				const folder6 = panel.addFolder( 'General Speed' );
-
-				settings = {
-					'show model': true,
-					'show skeleton': false,
-					'deactivate all': deactivateAllActions,
-					'activate all': activateAllActions,
-					'pause/continue': pauseContinue,
-					'make single step': toSingleStepMode,
-					'modify step size': 0.05,
-					'from walk to idle': function () {
-
-						prepareCrossFade( walkAction, idleAction, 1.0 );
-
-					},
-					'from idle to walk': function () {
-
-						prepareCrossFade( idleAction, walkAction, 0.5 );
-
-					},
-					'from walk to run': function () {
-
-						prepareCrossFade( walkAction, runAction, 2.5 );
-
-					},
-					'from run to walk': function () {
-
-						prepareCrossFade( runAction, walkAction, 5.0 );
-
-					},
-					'use default duration': true,
-					'set custom duration': 3.5,
-					'modify idle weight': 1.0,
-					'modify walk weight': 0.0,
-					'modify run weight': 0.0,
-					'modify time scale': 1.0
-				};
-
-				folder1.add( settings, 'show model' ).onChange( showModel );
-				folder1.add( settings, 'show skeleton' ).onChange( showSkeleton );
-				folder2.add( settings, 'deactivate all' );
-				folder2.add( settings, 'activate all' );
-				folder3.add( settings, 'pause/continue' );
-				folder3.add( settings, 'make single step' );
-				folder3.add( settings, 'modify step size', 0.01, 0.1, 0.001 );
-				crossFadeControls.push( folder4.add( settings, 'from walk to idle' ) );
-				crossFadeControls.push( folder4.add( settings, 'from idle to walk' ) );
-				crossFadeControls.push( folder4.add( settings, 'from walk to run' ) );
-				crossFadeControls.push( folder4.add( settings, 'from run to walk' ) );
-				folder4.add( settings, 'use default duration' );
-				folder4.add( settings, 'set custom duration', 0, 10, 0.01 );
-				folder5.add( settings, 'modify idle weight', 0.0, 1.0, 0.01 ).listen().onChange( function ( weight ) {
-
-					setWeight( idleAction, weight );
-
-				} );
-				folder5.add( settings, 'modify walk weight', 0.0, 1.0, 0.01 ).listen().onChange( function ( weight ) {
-
-					setWeight( walkAction, weight );
-
-				} );
-				folder5.add( settings, 'modify run weight', 0.0, 1.0, 0.01 ).listen().onChange( function ( weight ) {
-
-					setWeight( runAction, weight );
-
-				} );
-				folder6.add( settings, 'modify time scale', 0.0, 1.5, 0.01 ).onChange( modifyTimeScale );
-
-				folder1.open();
-				/*folder2.open();
-				folder3.open();
-				folder4.open();
-				folder5.open();
-				folder6.open();*/
+				panel.add( settings, 'show_skeleton' ).onChange( (b) => { skeleton.visible = b; } );
+				panel.add( settings, 'fixe_transition' );
 
 			}
-
-
-			function showModel( visibility ) {
-
-				model.visible = visibility;
-
-			}
-
-
-			function showSkeleton( visibility ) {
-
-				skeleton.visible = visibility;
-
-			}
-
-
-			function modifyTimeScale( speed ) {
-
-				mixer.timeScale = speed;
-
-			}
-
-
-			function deactivateAllActions() {
-
-				actions.forEach( function ( action ) {
-
-					action.stop();
-
-				} );
-
-			}
-
-			function activateAllActions() {
-
-				setWeight( idleAction, settings[ 'modify idle weight' ] );
-				setWeight( walkAction, settings[ 'modify walk weight' ] );
-
-
-				setWeight( runAction, settings[ 'modify run weight' ] );
-
-				actions.forEach( function ( action ) {
-
-					action.play();
-
-				} );
-
-			}
-
-			function pauseContinue() {
-
-				if ( singleStepMode ) {
-
-					singleStepMode = false;
-					unPauseAllActions();
-
-				} else {
-
-					if ( idleAction.paused ) {
-
-						unPauseAllActions();
-
-					} else {
-
-						pauseAllActions();
-
-					}
-
-				}
-
-			}
-
-			function pauseAllActions() {
-
-				actions.forEach( function ( action ) {
-
-					action.paused = true;
-
-				} );
-
-			}
-
-			function unPauseAllActions() {
-
-				actions.forEach( function ( action ) {
-
-					action.paused = false;
-
-				} );
-
-			}
-
-			function toSingleStepMode() {
-
-				unPauseAllActions();
-
-				singleStepMode = true;
-				sizeOfNextStep = settings[ 'modify step size' ];
-
-			}
-
-			function prepareCrossFade( startAction, endAction, defaultDuration ) {
-
-				// Switch default / custom crossfade duration (according to the user's choice)
-
-				const duration = setCrossFadeDuration( defaultDuration );
-
-				// Make sure that we don't go on in singleStepMode, and that all actions are unpaused
-
-				singleStepMode = false;
-				unPauseAllActions();
-
-				// If the current action is 'idle' (duration 4 sec), execute the crossfade immediately;
-				// else wait until the current action has finished its current loop
-
-				if ( startAction === idleAction ) {
-
-					executeCrossFade( startAction, endAction, duration );
-
-				} else {
-
-					synchronizeCrossFade( startAction, endAction, duration );
-
-				}
-
-			}
-
-			function setCrossFadeDuration( defaultDuration ) {
-
-				// Switch default crossfade duration <-> custom crossfade duration
-
-				if ( settings[ 'use default duration' ] ) {
-
-					return defaultDuration;
-
-				} else {
-
-					return settings[ 'set custom duration' ];
-
-				}
-
-			}
-
-			function synchronizeCrossFade( startAction, endAction, duration ) {
-
-				mixer.addEventListener( 'loop', onLoopFinished );
-
-				function onLoopFinished( event ) {
-
-					if ( event.action === startAction ) {
-
-						mixer.removeEventListener( 'loop', onLoopFinished );
-
-						executeCrossFade( startAction, endAction, duration );
-
-					}
-
-				}
-
-			}
-
-			function executeCrossFade( startAction, endAction, duration ) {
-
-				// Not only the start action, but also the end action must get a weight of 1 before fading
-				// (concerning the start action this is already guaranteed in this place)
-
-				setWeight( endAction, 1 );
-				endAction.time = 0;
-
-				// Crossfade with warping - you can also try without warping by setting the third parameter to false
-
-				startAction.crossFadeTo( endAction, duration, true );
-
-			}
-
-			// This function is needed, since animationAction.crossFadeTo() disables its start action and sets
-			// the start action's timeScale to ((start animation's duration) / (end animation's duration))
 
 			function setWeight( action, weight ) {
 
@@ -603,11 +342,11 @@
 
 				const key = controls.key;
 				switch ( event.code ) {
-					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 1; break;
-					case 'ArrowDown': case 'KeyS': key[0] = -1; break;
-					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = 1; break;
-					case 'ArrowRight': case 'KeyD': key[1] = -1; break;
-					case 'ShiftLeft' : key[2] = 1; break;
+					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = -1; break;
+					case 'ArrowDown': case 'KeyS': key[0] = 1; break;
+					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = -1; break;
+					case 'ArrowRight': case 'KeyD': key[1] = 1; break;
+					case 'ShiftLeft' : case 'ShiftRight' : key[2] = 1; break;
 				}
 
 			}
@@ -616,11 +355,18 @@
 
 				const key = controls.key;
 				switch ( event.code ) {
-					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 0; break;
+					/*case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 0; break;
 					case 'ArrowDown': case 'KeyS': key[0] = 0; break;
 					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = 0; break;
 					case 'ArrowRight': case 'KeyD': key[1] = 0; break;
-					case 'ShiftLeft' : key[2] = 0; break;
+					case 'ShiftLeft' : key[2] = 0; break;*/
+
+					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = key[0]<0 ? 0:key[0]; break;
+					case 'ArrowDown': case 'KeyS': key[0] = key[0]>0 ? 0:key[0]; break;
+					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = key[1]<0 ? 0:key[1]; break;
+					case 'ArrowRight': case 'KeyD': key[1] = key[1]>0 ? 0:key[1]; break;
+					case 'ShiftLeft' : case 'ShiftRight' : key[2] = 0; break;
+
 				}
 
 			}
@@ -642,8 +388,6 @@
 				let delta = clock.getDelta();
 
 				updateCharacter( delta );
-
-				stats.update();
 
 				renderer.render( scene, camera );
 
