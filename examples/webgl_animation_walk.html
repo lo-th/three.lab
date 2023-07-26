@@ -65,10 +65,10 @@
 				up : new THREE.Vector3(0, 1, 0),
 				rotate: new THREE.Quaternion(),
 				current:'Idle',
-				fadeDuration:0.2,
+				fadeDuration:0.5,
 				runVelocity:5,
-				walkVelocity:2,
-				rotateSpeed:0.1,
+				walkVelocity:1.8,
+				rotateSpeed:0.05,
 				floorDecale:0,
 
 			};
@@ -90,7 +90,7 @@
 
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0x5e5d5d );
-				scene.fog = new THREE.Fog( 0x5e5d5d, 2, 30 );
+				scene.fog = new THREE.Fog( 0x5e5d5d, 2, 20 );
 
 				group = new THREE.Group();
 				scene.add(group);
@@ -158,16 +158,20 @@
 				let size = 50;
 				let repeat = 25;
 
+				const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
 				const floorT = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Diffuse.jpg' );
 				floorT.colorSpace = THREE.SRGBColorSpace;
 				floorT.repeat.set( repeat, repeat );
 				floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping;
+				floorT.anisotropy = maxAnisotropy;
 
 				const floorN = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Normal.jpg' );
 				floorN.repeat.set( repeat, repeat );
 				floorN.wrapS = floorN.wrapT = THREE.RepeatWrapping;
+				floorN.anisotropy = maxAnisotropy;
 
-				let mat = new THREE.MeshStandardMaterial( { map:floorT, normalMap:floorN, normalScale:new THREE.Vector2(-2,-2), color: 0x404040, depthWrite: false, roughness:1.0 } )
+				let mat = new THREE.MeshStandardMaterial( { map:floorT, normalMap:floorN, normalScale:new THREE.Vector2(-1,-1), color: 0x404040, depthWrite: false, roughness:0.85 } )
 
 				let g = new THREE.PlaneGeometry( size, size, 50, 50 );
 				g.rotateX( -PI90 );
@@ -176,7 +180,17 @@
 				floor.receiveShadow = true;
 				scene.add( floor );
 
-				controls.floorDecale = (size / repeat);
+				controls.floorDecale = (size / repeat) * 4;
+
+
+				const bulbGeometry = new THREE.SphereGeometry( 0.05, 16, 8 );
+				let bulbLight = new THREE.PointLight( 0xffee88, 1, 100, 2 );
+
+				let bulbMat = new THREE.MeshStandardMaterial( { emissive: 0xffffee, emissiveIntensity: 1, color: 0x000000 } );
+				bulbLight.add( new THREE.Mesh( bulbGeometry, bulbMat ) );
+				bulbLight.position.set( 1, 1, -3 );
+				bulbLight.castShadow = true;
+				floor.add( bulbLight );
 
 			}
 
@@ -197,14 +211,12 @@
 						    if( object.name == 'vanguard_Mesh' ){
 						    	object.castShadow = true;
 								object.receiveShadow = true;
-								//object.material = new THREE.MeshStandardMaterial()
 								object.material.shadowSide = THREE.DoubleSide;
-								object.material.envMapIntensity = 0.5;
+								//object.material.envMapIntensity = 0.5;
 								object.material.metalness = 1.0;
 								object.material.roughness = 0.2;
 								object.material.color.set(1,1,1);
 								object.material.metalnessMap = object.material.map;
-								//object.material.envMap = scene.environment
 						    } else {
 						    	object.material.metalness = 1;
 								object.material.roughness = 0;
@@ -238,6 +250,12 @@
 						Run:mixer.clipAction( animations[ 1 ] )
 					};
 
+					for( let m in actions ){
+						actions[m].enabled = true;
+						actions[m].setEffectiveTimeScale( 1 );
+						if(m!=='Idle') actions[m].setEffectiveWeight( 0 );
+					}
+
 					actions.Idle.play();
 
 					animate();
@@ -248,6 +266,7 @@
 
 			function updateCharacter( delta ) {
 
+				const fade = controls.fadeDuration
 				const key = controls.key;
 				const up = controls.up;
 				const ease = controls.ease;
@@ -262,18 +281,28 @@
 
 		        if ( controls.current != play ){
 
-		        	const toPlay = actions[play];
-		            const current = actions[controls.current];
+		           
+
+		        	const current = actions[play];
+		            const old = actions[controls.current];
 		            controls.current = play;
 
-		            if(settings.fixe_transition){
-		            	setWeight( toPlay, 1.0 );
-			            current.fadeOut(controls.fadeDuration);
-			            toPlay.reset().fadeIn( controls.fadeDuration ).play();
-		            }else{
-		            	setWeight( toPlay, 1.0 );
-			            current.fadeOut(controls.fadeDuration);
-			            toPlay.reset().fadeIn( controls.fadeDuration ).play();
+		            
+
+		            if( settings.fixe_transition ){
+		            	current.reset()
+		            	current.weight = 1.0;
+		            	current.stopFading()
+		            	old.stopFading();
+		            	// sycro if not idle
+                        if ( play !== 'Idle' ) current.time = old.time * ( current.getClip().duration / old.getClip().duration );
+		            	old._scheduleFading( fade, old.getEffectiveWeight(), 0 );
+                        current._scheduleFading( fade, current.getEffectiveWeight(), 1 );	
+			            current.play();
+		            } else {
+		            	setWeight( current, 1.0 );
+			            old.fadeOut(fade);
+			            current.reset().fadeIn( fade ).play();
 		            }
 
 		        }
@@ -355,18 +384,11 @@
 
 				const key = controls.key;
 				switch ( event.code ) {
-					/*case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 0; break;
-					case 'ArrowDown': case 'KeyS': key[0] = 0; break;
-					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = 0; break;
-					case 'ArrowRight': case 'KeyD': key[1] = 0; break;
-					case 'ShiftLeft' : key[2] = 0; break;*/
-
 					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = key[0]<0 ? 0:key[0]; break;
 					case 'ArrowDown': case 'KeyS': key[0] = key[0]>0 ? 0:key[0]; break;
 					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = key[1]<0 ? 0:key[1]; break;
 					case 'ArrowRight': case 'KeyD': key[1] = key[1]>0 ? 0:key[1]; break;
 					case 'ShiftLeft' : case 'ShiftRight' : key[2] = 0; break;
-
 				}
 
 			}
