@@ -2,6 +2,6 @@
 	"webgl": [
 		"webgl_random_uv",
 		"webgl_disolve",
-		"webgl_animation_skinning_blending"
+		"webgl_animation_walk"
 	]
 }

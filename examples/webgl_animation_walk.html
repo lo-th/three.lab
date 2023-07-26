@@ -14,9 +14,9 @@
 	<body>
 		<div id="container"></div>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Skeletal Animation Blending
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Skeletal Animation Walking
 			(model from <a href="https://www.mixamo.com/" target="_blank" rel="noopener">mixamo.com</a>)<br/>
-			Note: crossfades are possible with blend weights being set to (1,0,0), (0,1,0) or (0,0,1)
+			use arrows to control characters
 		</div>
 
 		<!-- Import maps polyfill -->
@@ -36,22 +36,50 @@
 
 			import * as THREE from 'three';
 
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import Stats from 'three/addons/libs/stats.module.js';
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-			let scene, renderer, camera, stats;
-			let model, skeleton, mixer, clock;
+			let scene, renderer, camera, stats, orbitControls;
+			let group, followGroup, model, skeleton, mixer, clock;
 
 			const crossFadeControls = [];
 
 			let idleAction, walkAction, runAction;
-			let idleWeight, walkWeight, runWeight;
-			let actions, settings;
+			//let idleWeight, walkWeight, runWeight;
+			let actions; 
+			let actionsMap; 
+			let settings = {
+				'modify idle weight': 1.0,
+				'modify walk weight': 0.0,
+				'modify run weight': 0.0,
+				'modify time scale': 1.0
+			};
+
+
 
 			let singleStepMode = false;
 			let sizeOfNextStep = 0;
+
+			const PI = Math.PI;
+			const PI90 = Math.PI / 2;
+			const PI45 = Math.PI / 4;
+
+			const controls = {
+
+				key:[0,0],
+				walkDirection : new THREE.Vector3(),
+				rotateAngle : new THREE.Vector3(0, 1, 0),
+				rotate: new THREE.Quaternion(),
+				current:'Idle',
+				fadeDuration:0.2,
+				runVelocity:5,
+				walkVelocity:2,
+				rotateSpeed:0.1,
+			};
 
 			init();
 
@@ -59,51 +87,136 @@
 
 				const container = document.getElementById( 'container' );
 
-				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 100 );
-				camera.position.set( 1, 2, - 3 );
-				camera.lookAt( 0, 1, 0 );
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 2, - 3 );
+				//camera.lookAt( 0, 1, 0 );
+
 
 				clock = new THREE.Clock();
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0xa0a0a0 );
-				scene.fog = new THREE.Fog( 0xa0a0a0, 10, 50 );
+				scene.background = new THREE.Color( 0x5e5d5d );
+				scene.fog = new THREE.Fog( 0x5e5d5d, 2, 30 );
 
-				const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x8d8d8d, 3 );
+				group = new THREE.Group();
+				scene.add(group);
+
+				followGroup = new THREE.Group();
+				scene.add(followGroup);
+
+				/*8const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x8d8d8d, 0.1 );
 				hemiLight.position.set( 0, 20, 0 );
-				scene.add( hemiLight );
+				scene.add( hemiLight );*/
 
-				const dirLight = new THREE.DirectionalLight( 0xffffff, 3 );
-				dirLight.position.set( - 3, 10, - 10 );
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 5 );
+				dirLight.position.set( - 2, 5, - 3 );
 				dirLight.castShadow = true;
 				dirLight.shadow.camera.top = 2;
 				dirLight.shadow.camera.bottom = - 2;
 				dirLight.shadow.camera.left = - 2;
 				dirLight.shadow.camera.right = 2;
-				dirLight.shadow.camera.near = 0.1;
-				dirLight.shadow.camera.far = 40;
-				scene.add( dirLight );
+				dirLight.shadow.camera.near = 3;
+				dirLight.shadow.camera.far = 8;
+				dirLight.shadow.bias = -0.005;
+				dirLight.shadow.radius = 4;
+				followGroup.add( dirLight );
+				followGroup.add( dirLight.target );
 
-				// scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
+				//scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
 
-				// ground
+								
 
-				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
+				new RGBELoader()
+					.setPath( 'textures/equirectangular/' )
+					.load( 'alien.hdr', function ( texture ) {
+
+						texture.mapping = THREE.EquirectangularReflectionMapping;
+						scene.environment = texture;
+
+						loadModel()
+						addFloor()
+
+					})
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+				container.appendChild( renderer.domElement );
+
+				orbitControls = new OrbitControls( camera, renderer.domElement );
+				orbitControls.target.set( 0, 1, 0 );
+				orbitControls.enableDamping = true
+				orbitControls.enablePan = false
+				orbitControls.maxPolarAngle = Math.PI / 2 - 0.05
+				orbitControls.update();
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+				window.addEventListener( 'resize', onWindowResize );
+				document.addEventListener( 'keydown', onKeyDown );
+				document.addEventListener( 'keyup', onKeyUp );
+
+			}
+
+			function addFloor() {
+
+				let rep = 50;
+
+				const floor = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Diffuse.jpg' );
+				floor.colorSpace = THREE.SRGBColorSpace;
+				floor.repeat.set( rep, rep );
+				floor.wrapS = floor.wrapT = THREE.RepeatWrapping;
+
+				const floorN = new THREE.TextureLoader().load( 'textures/floors/FloorsCheckerboard_S_Normal.jpg' );
+				floorN.repeat.set( rep, rep );
+				floorN.wrapS = floorN.wrapT = THREE.RepeatWrapping;
+
+				let floorMat = new THREE.MeshStandardMaterial( { normalMap:floorN, normalScale:new THREE.Vector2(2,2), color: 0x404040, depthWrite: false, roughness:1.0 } )
+
+				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), floorMat );
 				mesh.rotation.x = - Math.PI / 2;
 				mesh.receiveShadow = true;
 				scene.add( mesh );
 
+			}
+
+			function loadModel() {
+
 				const loader = new GLTFLoader();
 				loader.load( 'models/gltf/Soldier.glb', function ( gltf ) {
 
+
 					model = gltf.scene;
-					scene.add( model );
+					group.add( model );
 
 					model.traverse( function ( object ) {
 
-						if ( object.isMesh ) object.castShadow = true;
+						if ( object.isMesh ){
+						    if(object.name == 'vanguard_Mesh'){
+						    	object.castShadow = true;
+								object.receiveShadow = true;
+								//object.material = new THREE.MeshStandardMaterial()
+								object.material.shadowSide = THREE.DoubleSide;
+								object.material.envMapIntensity = 0.5;
+								object.material.metalness = 0.5;
+								object.material.roughness = 0.1;
+								//object.material.side = THREE.DoubleSide;
+								
+								object.material.color.set(1,1,1);
+								object.material.metalnessMap = object.material.map;
+								//object.material.envMap = scene.environment
+						    } else {
+						    	object.material.metalness = 0;
+								object.material.roughness = 0;
+								object.material.transparent = true;
+								object.material.opacity = 0.8;
+								object.material.color.set(0,0,0);
+						    }
+						}
 
-					} );
+					});
 
 					//
 
@@ -113,8 +226,7 @@
 
 					//
 
-					createPanel();
-
+					//createPanel();
 
 					//
 
@@ -126,6 +238,12 @@
 					walkAction = mixer.clipAction( animations[ 3 ] );
 					runAction = mixer.clipAction( animations[ 1 ] );
 
+					actionsMap = {
+						Idle:idleAction,
+						Walk:walkAction,
+						Run:runAction
+					}
+
 					actions = [ idleAction, walkAction, runAction ];
 
 					activateAllActions();
@@ -134,16 +252,90 @@
 
 				} );
 
-				renderer = new THREE.WebGLRenderer( { antialias: true } );
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.shadowMap.enabled = true;
-				container.appendChild( renderer.domElement );
+			}
 
-				stats = new Stats();
-				container.appendChild( stats.dom );
+			function updateCharacter( delta ) {
 
-				window.addEventListener( 'resize', onWindowResize );
+				const key = controls.key
+
+				let active = key[0] === 0 && key[1] === 0 ? false : true;
+
+				let play = '';
+		        if (active) {
+		            play = key[2] ? 'Run' : 'Walk'
+		        } else {
+		            play = 'Idle'
+		        }
+
+		        if ( controls.current != play ){
+
+		        	const toPlay = actionsMap[play];
+		            const current = actionsMap[controls.current];
+		            controls.current = play;
+
+		            setWeight( toPlay, 1.0 );
+		            current.fadeOut(controls.fadeDuration);
+		            toPlay.reset().fadeIn( controls.fadeDuration ).play();
+		        	
+
+		        }
+
+
+		        if ( controls.current == 'Run' || controls.current == 'Walk' ) {
+
+		         	// calculate towards camera direction
+		         	let angle = Math.atan2( camera.position.x - group.position.x, camera.position.z - group.position.z )
+		         	let dir = 0
+		         	if( key[0]!==0 && key[1]!==0 ){
+		         		if( key[0]>0 ) dir = PI45 * key[1];
+		         		else dir = (PI45 + PI90) * key[1];
+		         	} else {
+		         		if(key[0]<0) dir = PI
+		         		if(key[1]!==0) dir = PI90*key[1]
+		         	} 
+
+		            controls.rotate.setFromAxisAngle(controls.rotateAngle, angle + dir);
+		            group.quaternion.rotateTowards(controls.rotate, controls.rotateSpeed )
+
+		            // calculate direction
+		            camera.getWorldDirection(controls.walkDirection)
+		            controls.walkDirection.y = 0
+		            controls.walkDirection.normalize()
+		            controls.walkDirection.applyAxisAngle(controls.rotateAngle, dir)
+
+			        // run/walk velocity
+			        const velocity = controls.current == 'Run' ? controls.runVelocity : controls.walkVelocity
+			        const moveX = controls.walkDirection.x * velocity * delta
+		            const moveZ = controls.walkDirection.z * velocity * delta
+		            group.position.x += moveX
+		            group.position.z += moveZ
+
+		            camera.position.x += moveX
+		            camera.position.z += moveZ
+
+		            orbitControls.target.copy( group.position ).add({x:0, y:1, z:0})
+		            
+
+		            followGroup.position.copy( group.position )
+
+			    }
+
+
+				
+
+				// If in single step mode, make one step and then do nothing (until the user clicks again)
+
+				/*if ( singleStepMode ) {
+
+					mixerUpdateDelta = sizeOfNextStep;
+					sizeOfNextStep = 0;
+
+				}*/
+
+				// Update the animation mixer, the stats panel, and render this frame
+
+				mixer.update( delta );
+				orbitControls.update()
 
 			}
 
@@ -188,8 +380,8 @@
 					},
 					'use default duration': true,
 					'set custom duration': 3.5,
-					'modify idle weight': 0.0,
-					'modify walk weight': 1.0,
+					'modify idle weight': 1.0,
+					'modify walk weight': 0.0,
 					'modify run weight': 0.0,
 					'modify time scale': 1.0
 				};
@@ -225,11 +417,11 @@
 				folder6.add( settings, 'modify time scale', 0.0, 1.5, 0.01 ).onChange( modifyTimeScale );
 
 				folder1.open();
-				folder2.open();
+				/*folder2.open();
 				folder3.open();
 				folder4.open();
 				folder5.open();
-				folder6.open();
+				folder6.open();*/
 
 			}
 
@@ -269,6 +461,8 @@
 
 				setWeight( idleAction, settings[ 'modify idle weight' ] );
 				setWeight( walkAction, settings[ 'modify walk weight' ] );
+
+
 				setWeight( runAction, settings[ 'modify run weight' ] );
 
 				actions.forEach( function ( action ) {
@@ -418,17 +612,17 @@
 
 			// Called by the render loop
 
-			function updateWeightSliders() {
+			/*function updateWeightSliders() {
 
 				settings[ 'modify idle weight' ] = idleWeight;
 				settings[ 'modify walk weight' ] = walkWeight;
 				settings[ 'modify run weight' ] = runWeight;
 
-			}
+			}*/
 
 			// Called by the render loop
 
-			function updateCrossFadeControls() {
+			/*function updateCrossFadeControls() {
 
 				if ( idleWeight === 1 && walkWeight === 0 && runWeight === 0 ) {
 
@@ -457,13 +651,38 @@
 
 				}
 
+			}*/
+
+			function onKeyDown( event ) {
+
+				const key = controls.key;
+				switch ( event.code ) {
+					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 1; break;
+					case 'ArrowDown': case 'KeyS': key[0] = -1; break;
+					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = 1; break;
+					case 'ArrowRight': case 'KeyD': key[1] = -1; break;
+					case 'ShiftLeft' : key[2] = 1; break;
+				}
+
+			}
+
+			function onKeyUp( event ) {
+
+				const key = controls.key;
+				switch ( event.code ) {
+					case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = 0; break;
+					case 'ArrowDown': case 'KeyS': key[0] = 0; break;
+					case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = 0; break;
+					case 'ArrowRight': case 'KeyD': key[1] = 0; break;
+					case 'ShiftLeft' : key[2] = 0; break;
+				}
+
 			}
 
 			function onWindowResize() {
 
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
-
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
 			}
@@ -474,34 +693,9 @@
 
 				requestAnimationFrame( animate );
 
-				idleWeight = idleAction.getEffectiveWeight();
-				walkWeight = walkAction.getEffectiveWeight();
-				runWeight = runAction.getEffectiveWeight();
+				let delta = clock.getDelta();
 
-				// Update the panel values if weights are modified from "outside" (by crossfadings)
-
-				updateWeightSliders();
-
-				// Enable/disable crossfade controls according to current weight values
-
-				updateCrossFadeControls();
-
-				// Get the time elapsed since the last frame, used for mixer update (if not in single step mode)
-
-				let mixerUpdateDelta = clock.getDelta();
-
-				// If in single step mode, make one step and then do nothing (until the user clicks again)
-
-				if ( singleStepMode ) {
-
-					mixerUpdateDelta = sizeOfNextStep;
-					sizeOfNextStep = 0;
-
-				}
-
-				// Update the animation mixer, the stats panel, and render this frame
-
-				mixer.update( mixerUpdateDelta );
+				updateCharacter( delta )
 
 				stats.update();
 
