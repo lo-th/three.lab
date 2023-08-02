@@ -4,9 +4,11 @@ import {
 import { mergeVertices, mergeGeometries } from '../jsm/utils/BufferGeometryUtils.js';
 import { SVGLoader } from '../jsm/loaders/SVGLoader.js';
 
-export class AutoSvg {
+export class AutoSvg extends Mesh {
 
 	constructor ( model, option = {}, material = null  ) {
+
+		super();
 
 		this.model = model
 
@@ -28,37 +30,44 @@ export class AutoSvg {
 
 		if( !this.model ) return;
 
+		let o = {}
+
 		switch( this.model ){
 
 			case 'angle':
 
-			const o = {
-				radius: 5,
-				min:90,
-				max:90,
+			o = {
+				radius: 5, min:90, max:90,
 				...option
 			}
 
-			this.fill = o.fill !== undefined ? o.fill : true
-	        this.stroke = o.stroke !== undefined ? o.stroke : true
-
-	        let min = Math.abs(o.min)
-			
+			this.fill = o.fill !== undefined ? o.fill : true;
+	        this.stroke = o.stroke !== undefined ? o.stroke : true;
+	        let min = Math.abs(o.min);
 			this.add( 'path', { d: this.circle(0,0, o.radius, 180,180+o.max, true ), stroke:'none', fill:'#FF0000', 'fill-opacity':0.1 } );
 			this.add( 'path', { d: this.circle(0,0, o.radius, 180,180+o.max, false, false, 0.3), stroke:'#FF0000', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'round' } );
 			this.add( 'path', { d: this.circle(0,0, o.radius, 180-min,180, true ), stroke:'none', fill:'#0050FF', 'fill-opacity':0.1 } );
 	        this.add( 'path', { d: this.circle(0,0, o.radius, 180-min,180, false, false, 0.3, true), stroke:'#0050FF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'round' } );
-
+			break;
+			case 'needle':
+			this.fill = o.fill !== undefined ? o.fill : true;
+	        this.stroke = o.stroke !== undefined ? o.stroke : true;
+			this.add( 'path', { d: this.circle(0,0, 0.2, 0, 360, false, true, 0), stroke:'#FFFFFF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'butt' } );
+			this.add( 'path', { d: this.segment({x:0, y:0.2}, {x:0, y:4.5} ), stroke:'#FFFFFF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'round' } );
 			break;
 		}
 
+		this.toMesh()
 
+	}
+
+	raycast(){
+		return;
 	}
 
 	update( option = {} ){
 
-		let o = {
-		}
+		let o = {}
 
 		switch( this.model ){
 
@@ -142,20 +151,19 @@ export class AutoSvg {
 	    )
 	    if( close ) d.push( 'Z');
 
-	if( endTag!==0 ){
-		let p1 = this.polarToCartesian(x, y, radius-endTag, over ? startAngle:endAngle);
-		let p2 = this.polarToCartesian(x, y, radius+endTag, over ? startAngle:endAngle);
-		d.push( 'M', p1.x, p1.y,"L", p2.x, p2.y);
-	}
-
-
+		if( endTag!==0 ){
+			let p1 = this.polarToCartesian(x, y, radius-endTag, over ? startAngle:endAngle);
+			let p2 = this.polarToCartesian(x, y, radius+endTag, over ? startAngle:endAngle);
+			d.push( 'M', p1.x, p1.y,"L", p2.x, p2.y);
+		}
 
 	    return d.join(" ");
-
+	    
 	}
 
-	segment(){
-
+	segment( p1, p2 ){
+		let d = [ 'M', p1.x, p1.y,"L", p2.x, p2.y ];
+		return d.join(" ");
 	}
 
 	// THREE SIDE
@@ -179,10 +187,8 @@ export class AutoSvg {
 		if ( !this.fill && !this.stroke ) return null;
 
 		let geom = [];
-
-		let layer = 0
-		let opacity = 1
-
+		let layer = 0;
+		let opacity = 1;
 		let data = this.svgLoader.parse( this.getString() );
 		
 		for ( const path of data.paths ) {
@@ -240,13 +246,13 @@ export class AutoSvg {
 
 		}
 
-		return geom
+		return geom;
 
 	}
 
 	toMesh( s = 1 ){
 
-		if( this.mesh ) this.geometry.dispose()
+		if( this.geometry ) this.geometry.dispose();
 		
 		let tmpG = this.toGeometry();
         
@@ -260,20 +266,14 @@ export class AutoSvg {
 		}
 
 		if( this.material === null ){ 
-			this.material = new MeshBasicMaterial({ vertexColors:true, transparent:this.opacity!==1 })
+			this.material = new MeshBasicMaterial({ vertexColors:true, transparent:this.opacity!==1, side:DoubleSide })
 			this.material.defines = { 'USE_COLOR_ALPHA': '' }
 		}
-
-		if( this.mesh ) this.mesh.geometry = this.geometry
-		else this.mesh = new Mesh( this.geometry, this.material );
-		return this.mesh;
 
 	}
 
 	dispose(){
-		if(this.mesh){
-			this.mesh = null
-		}
+		
 		if( this.material && !this.outMaterial ) this.material.dispose()
 		if( this.geometry ) this.geometry.dispose()
 	}

@@ -43,7 +43,7 @@
 
 			let renderer, scene, camera, gui, guiData;
 
-			let svg 
+			let svg, svg2 
 			let dt = {
 				min:-45,
 				max:45,
@@ -97,7 +97,11 @@
 				//
 
 				svg = new AutoSvg('angle', dt );
-				scene.add( svg.toMesh() );
+				scene.add( svg );
+
+				svg2 = new AutoSvg('needle', {} );
+				scene.add( svg2 );
+				svg2.position.z = 0.01
 
 				//
 
