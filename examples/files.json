@@ -2,6 +2,7 @@
 	"webgl": [
 		"webgl_random_uv",
 		"webgl_disolve",
-		"webgl_animation_walk"
+		"webgl_animation_walk",
+		"webgl_auto_svg"
 	]
 }
