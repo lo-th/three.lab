@@ -190,6 +190,7 @@
 				let second = currentDate.getSeconds();
 				let day = currentDate.getDay();
 				let mounth = currentDate.getMonth();
+				let mili = currentDate.getMilliseconds()
 				if(hour >= 12 ) hour-=12
 				if(day > 30 ) day=30
 
@@ -199,7 +200,7 @@
 
 				meshs.mini_03.rotation.y = -day * 12 * torad;
 				meshs.mini_02.rotation.y = -mounth * 12 * torad;
-				meshs.mini_01.rotation.y = -second * 6 * torad;
+				meshs.mini_01.rotation.y = -mili * 0.36 * torad;
 
 			}
 
