@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - GLTFloader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+
+	<body>
+		<div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Random UV
+		</div>
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+			let camera, scene, renderer, gui, material, uniforms;
+			let ready = false;
+			const meshs = {};
+			const materials = {};
+			const torad = Math.PI / 180;
+
+			init();
+			render();
+
+			function init() {
+
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.1, 20 );
+				camera.position.set( - 0.8, 0.6, 1 );
+
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 1;
+				container.appendChild( renderer.domElement )
+
+				const map = new THREE.TextureLoader().load( 'textures/jade.jpg' );
+				map.colorSpace = THREE.SRGBColorSpace;
+				map.wrapS = map.wrapT = THREE.RepeatWrapping;
+				map.repeat.set(20,20);
+				map.flipY = false
+
+				const aoMap = new THREE.TextureLoader().load( 'textures/shaderBall.jpg' );
+				map.colorSpace = THREE.SRGBColorSpace;
+				aoMap.flipY = false
+
+				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
+
+				new RGBELoader()
+					.setPath( 'textures/equirectangular/' )
+					.load( 'lobe.hdr', function ( texture ) {
+
+						texture.mapping = THREE.EquirectangularReflectionMapping;
+
+						scene.background = texture;
+						scene.environment = texture;
+						scene.backgroundBlurriness = 0.3;
+
+						render();
+
+						// model
+
+						const loader = new GLTFLoader().setPath( 'models/gltf/' );
+						loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) )
+						loader.load( 'rolex.glb', function ( gltf ) {
+
+							gltf.scene.rotation.x = Math.PI*0.25
+
+							gltf.scene.traverse( ( child ) => {
+
+								if ( child.isMesh || child.isGroup ){
+									if ( child.isMesh ) materials[child.material.name] = child.material;
+									meshs[child.name] = child;
+								}
+
+							})
+
+							scene.add( gltf.scene );
+
+							console.log(materials)
+							materials.Gold.color.set( 0.944, 0.776, 0.373 )
+							//materials.Gold.color.set( 0.944, 0.776, 0.373 )
+
+							materials.Gold.metalness = materials.Silver.metalness = 0.8;
+							materials.Gold.roughness = materials.Silver.roughness = 0.05;
+
+							meshs.glass.material = new THREE.MeshPhysicalMaterial({transparent:true, opacity:0.1, metalness:1.0, roughness:0, side:THREE.DoubleSide })
+
+
+							ready = true;
+
+						} );
+
+					} );
+
+				;
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				//controls.addEventListener( 'change', render ); // use if there is no animation loop
+				controls.minDistance = 0.3;
+				controls.maxDistance = 10;
+				controls.target.set( 0, 0, 0 );
+				controls.update();
+
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function createGUI() {
+
+				/*const setting = {
+
+					get 'Enabled'() { return uniforms.enableRandom.value ? true : false; },
+					set 'Enabled'( v ) {  uniforms.enableRandom.value = v ? 1 : 0; render(); },
+
+					get 'UseNoiseMap'() { return uniforms.useNoiseMap.value ? true : false; },
+					set 'UseNoiseMap'( v ) {  uniforms.useNoiseMap.value = v ? 1 : 0; render(); },
+
+					get 'SuslikMethod'() { return uniforms.useSuslikMethod.value ? true : false; },
+					set 'SuslikMethod'( v ) {  uniforms.useSuslikMethod.value = v ? 1 : 0; render(); },
+
+					get 'DebugNoise'() { return uniforms.debugNoise.value ? true : false; },
+					set 'DebugNoise'( v ) {  uniforms.debugNoise.value = v ? 1 : 0; render(); },
+
+				}
+
+				gui = new GUI();
+				gui.add( material, 'roughness', 0, 1, 0.01 ).onChange(render);
+				gui.add( material, 'metalness', 0, 1, 0.01 ).onChange(render);
+				gui.add( setting, 'Enabled' );
+				gui.add( setting, 'UseNoiseMap' );
+				gui.add( setting, 'SuslikMethod' );
+				gui.add( setting, 'DebugNoise' );*/
+			
+			}
+
+			function getTime() {
+
+				const currentDate = new Date();
+				let hour = currentDate.getHours();
+				let minute = currentDate.getMinutes();
+				let second = currentDate.getSeconds();
+				let day = currentDate.getDay();
+				let mounth = currentDate.getMonth();
+				if(hour >= 12 ) hour-=12
+				if(day > 30 ) day=30
+
+				meshs.hour.rotation.y = -hour*30 * torad
+				meshs.minute.rotation.y = -minute * 6 * torad;
+				meshs.second.rotation.y = -second * 6 * torad;
+
+				meshs.mini_03.rotation.y = -day * 12 * torad;
+				meshs.mini_02.rotation.y = -mounth * 12 * torad;
+				meshs.mini_01.rotation.y = -second * 6 * torad;
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				//render();
+
+			}
+
+			//
+
+			function render() {
+
+				requestAnimationFrame( render );
+
+				renderer.render( scene, camera );
+				if(ready) getTime()
+
+			}
+
+		</script>
+
+	</body>
+</html>

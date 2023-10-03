@@ -10,7 +10,7 @@ export class AutoSvg extends Mesh {
 
 		super();
 
-		this.model = model
+		this.model = model;
 
 		this.material = material;
 		this.outMaterial = material ? true : false;
@@ -49,15 +49,18 @@ export class AutoSvg extends Mesh {
 			this.add( 'path', { d: this.circle(0,0, o.radius, 180-min,180, true ), stroke:'none', fill:'#0050FF', 'fill-opacity':0.1 } );
 	        this.add( 'path', { d: this.circle(0,0, o.radius, 180-min,180, false, false, 0.3, true), stroke:'#0050FF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'round' } );
 			break;
+
 			case 'needle':
 			this.fill = o.fill !== undefined ? o.fill : true;
 	        this.stroke = o.stroke !== undefined ? o.stroke : true;
 			this.add( 'path', { d: this.circle(0,0, 0.2, 0, 360, false, true, 0), stroke:'#FFFFFF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'butt' } );
 			this.add( 'path', { d: this.segment({x:0, y:0.2}, {x:0, y:4.5} ), stroke:'#FFFFFF', 'stroke-opacity':1, 'stroke-width':0.1, fill:'none', 'stroke-linecap':'round' } );
 			break;
+
+
 		}
 
-		this.toMesh()
+		this.toMesh();
 
 	}
 
@@ -158,7 +161,7 @@ export class AutoSvg extends Mesh {
 		}
 
 	    return d.join(" ");
-	    
+
 	}
 
 	segment( p1, p2 ){
