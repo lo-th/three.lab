@@ -36,7 +36,7 @@
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			let camera, scene, renderer, gui, material, uniforms;
+			let camera, scene, renderer, gui, dirLight;
 			let ready = false;
 			const meshs = {};
 			const materials = {};
@@ -60,6 +60,8 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 				renderer.toneMappingExposure = 1;
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.VSMShadowMap;
 				container.appendChild( renderer.domElement )
 
 				const map = new THREE.TextureLoader().load( 'textures/jade.jpg' );
@@ -97,7 +99,11 @@
 							gltf.scene.traverse( ( child ) => {
 
 								if ( child.isMesh || child.isGroup ){
-									if ( child.isMesh ) materials[child.material.name] = child.material;
+									if ( child.isMesh ){ 
+										materials[child.material.name] = child.material;
+										child.receiveShadow = true;
+										child.castShadow = true;
+									}
 									meshs[child.name] = child;
 								}
 
@@ -112,8 +118,8 @@
 							materials.Gold.metalness = materials.Silver.metalness = 0.8;
 							materials.Gold.roughness = materials.Silver.roughness = 0.05;
 
-							meshs.glass.material = new THREE.MeshPhysicalMaterial({transparent:true, opacity:0.1, metalness:1.0, roughness:0, side:THREE.DoubleSide })
-
+							meshs.glass.material = new THREE.MeshPhysicalMaterial({transparent:true, opacity:0.05, metalness:1.0, roughness:0, side:THREE.DoubleSide, iridescence:1.0 })
+							meshs.base.material = new THREE.MeshPhysicalMaterial({color:0x404040, sheenColor:0x201513, metalness:1.0, roughness:0.8, sheen:0.8 })
 
 							ready = true;
 
@@ -129,6 +135,23 @@
 				controls.maxDistance = 10;
 				controls.target.set( 0, -0.1, 0 );
 				controls.update();
+
+				dirLight = new THREE.DirectionalLight( 0xFFFFFF, 3 );
+				dirLight.position.set( -0.1, 0.6, 0.4 );
+				dirLight.castShadow = true;
+				dirLight.shadow.camera.near = 0.1;
+				dirLight.shadow.camera.far = 2;
+				dirLight.shadow.camera.right = 1;
+				dirLight.shadow.camera.left = - 1;
+				dirLight.shadow.camera.top	= 1;
+				dirLight.shadow.camera.bottom = - 1;
+				dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 1024;
+				dirLight.shadow.radius = 8;
+				dirLight.shadow.bias = - 0.0001;
+				scene.add( dirLight );
+
+				//let g = new THREE.CameraHelper(dirLight.shadow.camera)
+				//scene.add( g );
 
 				window.addEventListener( 'resize', onWindowResize );
 
