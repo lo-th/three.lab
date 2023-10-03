@@ -9,7 +9,7 @@
 
 	<body>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Random UV
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Rolex
 		</div>
 
 		<!-- Import maps polyfill -->
@@ -42,6 +42,13 @@
 			const materials = {};
 			const torad = Math.PI / 180;
 
+			const setting = {
+				roughness:0.05,
+				metalness:0.8,
+
+
+			}
+
 			init();
 			render();
 
@@ -51,7 +58,7 @@
 				document.body.appendChild( container );
 
 				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.1, 20 );
-				camera.position.set( - 0.8, 0.6, 0.8 );
+				camera.position.set( - 0.8, 0.5, 0.8 );
 
 				scene = new THREE.Scene();
 
@@ -70,11 +77,9 @@
 				map.repeat.set(20,20);
 				map.flipY = false
 
-				const aoMap = new THREE.TextureLoader().load( 'textures/shaderBall.jpg' );
-				map.colorSpace = THREE.SRGBColorSpace;
-				aoMap.flipY = false
-
-				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
+				const aoMap = new THREE.TextureLoader().load( 'textures/rolex_ao.jpg' );
+				//map.colorSpace = THREE.SRGBColorSpace;
+				aoMap.flipY = false;
 
 				new RGBELoader()
 					.setPath( 'textures/equirectangular/' )
@@ -106,22 +111,25 @@
 									}
 									meshs[child.name] = child;
 								}
-
 							})
 
 							scene.add( gltf.scene );
 
 							//console.log(materials)
-							materials.Gold.color.set( 0.944, 0.776, 0.373 )
-							//materials.Gold.color.set( 0.944, 0.776, 0.373 )
+							materials.Gold.color.set( 0.944, 0.776, 0.373 );
 
-							materials.Gold.metalness = materials.Silver.metalness = 0.8;
-							materials.Gold.roughness = materials.Silver.roughness = 0.05;
+							materials.Gold.metalness = materials.Silver.metalness = setting.metalness;
+							materials.Gold.roughness = materials.Silver.roughness = setting.roughness;
+
+							materials.Gold.aoMap = aoMap;
+							materials.Silver.aoMap = aoMap;
 
 							meshs.glass.material = new THREE.MeshPhysicalMaterial({transparent:true, opacity:0.05, metalness:1.0, roughness:0, side:THREE.DoubleSide, iridescence:1.0 })
-							meshs.base.material = new THREE.MeshPhysicalMaterial({color:0x404040, sheenColor:0x201513, metalness:1.0, roughness:0.8, sheen:0.8 })
+							meshs.base.material = new THREE.MeshPhysicalMaterial({color:0x323031, sheenColor:0x2011819, metalness:1.0, roughness:0.8, sheen:0.8, aoMap:aoMap })
 
 							ready = true;
+
+							createGUI()
 
 						} );
 
@@ -136,15 +144,16 @@
 				controls.target.set( 0, -0.1, 0 );
 				controls.update();
 
+				let s = 0.5;
 				dirLight = new THREE.DirectionalLight( 0xFFFFFF, 3 );
 				dirLight.position.set( -0.1, 0.6, 0.4 );
 				dirLight.castShadow = true;
 				dirLight.shadow.camera.near = 0.1;
 				dirLight.shadow.camera.far = 2;
-				dirLight.shadow.camera.right = 1;
-				dirLight.shadow.camera.left = - 1;
-				dirLight.shadow.camera.top	= 1;
-				dirLight.shadow.camera.bottom = - 1;
+				dirLight.shadow.camera.right = s;
+				dirLight.shadow.camera.left = - s;
+				dirLight.shadow.camera.top	= s;
+				dirLight.shadow.camera.bottom = - s;
 				dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 1024;
 				dirLight.shadow.radius = 8;
 				dirLight.shadow.bias = - 0.0001;
@@ -159,29 +168,17 @@
 
 			function createGUI() {
 
-				/*const setting = {
-
-					get 'Enabled'() { return uniforms.enableRandom.value ? true : false; },
-					set 'Enabled'( v ) {  uniforms.enableRandom.value = v ? 1 : 0; render(); },
-
-					get 'UseNoiseMap'() { return uniforms.useNoiseMap.value ? true : false; },
-					set 'UseNoiseMap'( v ) {  uniforms.useNoiseMap.value = v ? 1 : 0; render(); },
-
-					get 'SuslikMethod'() { return uniforms.useSuslikMethod.value ? true : false; },
-					set 'SuslikMethod'( v ) {  uniforms.useSuslikMethod.value = v ? 1 : 0; render(); },
-
-					get 'DebugNoise'() { return uniforms.debugNoise.value ? true : false; },
-					set 'DebugNoise'( v ) {  uniforms.debugNoise.value = v ? 1 : 0; render(); },
-
-				}
-
 				gui = new GUI();
-				gui.add( material, 'roughness', 0, 1, 0.01 ).onChange(render);
-				gui.add( material, 'metalness', 0, 1, 0.01 ).onChange(render);
-				gui.add( setting, 'Enabled' );
-				gui.add( setting, 'UseNoiseMap' );
-				gui.add( setting, 'SuslikMethod' );
-				gui.add( setting, 'DebugNoise' );*/
+				gui.add( setting, 'roughness', 0, 1, 0.01 ).onChange(upMaterial);
+				gui.add( setting, 'metalness', 0, 1, 0.01 ).onChange(upMaterial);
+			
+			}
+
+			function upMaterial() {
+
+				if(!ready) return;
+				materials.Gold.metalness = materials.Silver.metalness = setting.metalness;
+				materials.Gold.roughness = materials.Silver.roughness = setting.roughness;
 			
 			}
 
