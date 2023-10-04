@@ -36,17 +36,27 @@
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			let camera, scene, renderer, gui, dirLight;
+			import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+			import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+			import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+			import { TAARenderPass } from 'three/addons/postprocessing/TAARenderPass.js';
+			import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+			let composer, camera, scene, renderer; 
+			let gui, dirLight, controls, bloomPass;
 			let ready = false;
+
 			const meshs = {};
 			const materials = {};
 			const torad = Math.PI / 180;
 
 			const setting = {
-				roughness:0.05,
-				metalness:0.8,
-
-
+				roughness:0.08,
+				metalness:1.0,
+				threshold: 0,
+				strength: 0.16,
+				radius: 0,
+				exposure: 1
 			}
 
 			init();
@@ -66,7 +76,7 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
-				renderer.toneMappingExposure = 1;
+				renderer.toneMappingExposure = setting.exposure;
 				renderer.shadowMap.enabled = true;
 				renderer.shadowMap.type = THREE.VSMShadowMap;
 				container.appendChild( renderer.domElement )
@@ -78,7 +88,7 @@
 				map.flipY = false
 
 				const aoMap = new THREE.TextureLoader().load( 'textures/rolex_ao.jpg' );
-				//map.colorSpace = THREE.SRGBColorSpace;
+				map.colorSpace = THREE.SRGBColorSpace;
 				aoMap.flipY = false;
 
 				new RGBELoader()
@@ -137,11 +147,12 @@
 
 				;
 
-				const controls = new OrbitControls( camera, renderer.domElement );
-				//controls.addEventListener( 'change', render ); // use if there is no animation loop
+				controls = new OrbitControls( camera, renderer.domElement );
 				controls.minDistance = 0.3;
 				controls.maxDistance = 10;
 				controls.target.set( 0, -0.1, 0 );
+				controls.enableDamping = true;
+				controls.dampingFactor = 0.05;
 				controls.update();
 
 				let s = 0.5;
@@ -164,6 +175,33 @@
 
 				window.addEventListener( 'resize', onWindowResize );
 
+				//initPostProcess()
+
+			}
+
+			function initPostProcess() {
+
+				const renderScene = new RenderPass( scene, camera );
+
+				const taaRenderPass = new TAARenderPass( scene, camera );
+				taaRenderPass.unbiased = false;
+
+				bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
+				bloomPass.threshold = setting.threshold;
+				bloomPass.strength = setting.strength;
+				bloomPass.radius = setting.radius;
+
+				const outputPass = new OutputPass();
+
+				composer = new EffectComposer( renderer );
+				composer.setPixelRatio( 1 ); // ensure pixel ratio is always 1 for performance reasons
+				
+				composer.addPass( renderScene );
+				composer.addPass( taaRenderPass );
+				composer.addPass( bloomPass );
+
+				composer.addPass( outputPass );
+
 			}
 
 			function createGUI() {
@@ -171,6 +209,13 @@
 				gui = new GUI();
 				gui.add( setting, 'roughness', 0, 1, 0.01 ).onChange(upMaterial);
 				gui.add( setting, 'metalness', 0, 1, 0.01 ).onChange(upMaterial);
+
+				/*
+				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.threshold = Number( v ); });
+				gui.add( setting, 'strength', 0, 3, 0.01 ).onChange((v)=>{ bloomPass.strength = Number( v ); });
+				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.radius = Number( v ); });
+				gui.add( setting, 'exposure', 0, 2, 0.01 ).onChange((v)=>{ renderer.toneMappingExposure = Math.pow( v, 4.0 ); });
+				*/
 			
 			}
 
@@ -206,12 +251,13 @@
 
 			function onWindowResize() {
 
-				camera.aspect = window.innerWidth / window.innerHeight;
+				const width = window.innerWidth;
+				const height = window.innerHeight;
+
+				camera.aspect = width / height;
 				camera.updateProjectionMatrix();
-
-				renderer.setSize( window.innerWidth, window.innerHeight );
-
-				//render();
+				renderer.setSize( width, height );
+				if( composer ) composer.setSize( width, height );
 
 			}
 
@@ -220,8 +266,11 @@
 			function render() {
 
 				requestAnimationFrame( render );
+				controls.update();
+				
+				if( composer ) composer.render();
+				else renderer.render( scene, camera );
 
-				renderer.render( scene, camera );
 				if(ready) getTime()
 
 			}
