@@ -56,7 +56,8 @@
 				threshold: 0,
 				strength: 0.16,
 				radius: 0,
-				exposure: 1
+				exposure: 1,
+				postProcess:false,
 			}
 
 			init();
@@ -134,8 +135,19 @@
 							materials.Gold.aoMap = aoMap;
 							materials.Silver.aoMap = aoMap;
 
-							meshs.glass.material = new THREE.MeshPhysicalMaterial({transparent:true, opacity:0.05, metalness:1.0, roughness:0, side:THREE.DoubleSide, iridescence:1.0 })
-							meshs.base.material = new THREE.MeshPhysicalMaterial({color:0x323031, sheenColor:0x2011819, metalness:1.0, roughness:0.8, sheen:0.8, aoMap:aoMap })
+							meshs.glass.material = new THREE.MeshPhysicalMaterial({
+								color:0x909090,
+								transparent:true, opacity:0.2, 
+								metalness:1.0, roughness:0.0, 
+								envMapIntensity:1.5,
+								iridescence:1.0, 
+								clearcoat:1.0,
+							})
+
+							meshs.base.material = new THREE.MeshPhysicalMaterial({
+								color:0x323031, sheenColor:0x2011819, metalness:1.0, roughness:0.8, 
+								sheen:0.8, aoMap:aoMap 
+							})
 
 							ready = true;
 
@@ -179,28 +191,37 @@
 
 			}
 
-			function initPostProcess() {
+			function postProcess ( b ) {
 
-				const renderScene = new RenderPass( scene, camera );
+				if(b){
 
-				const taaRenderPass = new TAARenderPass( scene, camera );
-				taaRenderPass.unbiased = false;
+					if(composer) return;
+					const renderScene = new RenderPass( scene, camera );
+					const taaRenderPass = new TAARenderPass( scene, camera );
+					taaRenderPass.unbiased = true;
 
-				bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
-				bloomPass.threshold = setting.threshold;
-				bloomPass.strength = setting.strength;
-				bloomPass.radius = setting.radius;
+					bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
+					bloomPass.threshold = setting.threshold;
+					bloomPass.strength = setting.strength;
+					bloomPass.radius = setting.radius;
 
-				const outputPass = new OutputPass();
+					const outputPass = new OutputPass();
 
-				composer = new EffectComposer( renderer );
-				composer.setPixelRatio( 1 ); // ensure pixel ratio is always 1 for performance reasons
+					composer = new EffectComposer( renderer );
+					composer.setPixelRatio( 1 ); // ensure pixel ratio is always 1 for performance reasons
+					
+					composer.addPass( renderScene );
+					composer.addPass( taaRenderPass );
+					composer.addPass( bloomPass );
+
+					composer.addPass( outputPass );
+				} else {
+					if(!composer) return;
+					composer.dispose();
+					composer = null;
+				}
+
 				
-				composer.addPass( renderScene );
-				composer.addPass( taaRenderPass );
-				composer.addPass( bloomPass );
-
-				composer.addPass( outputPass );
 
 			}
 
@@ -210,12 +231,14 @@
 				gui.add( setting, 'roughness', 0, 1, 0.01 ).onChange(upMaterial);
 				gui.add( setting, 'metalness', 0, 1, 0.01 ).onChange(upMaterial);
 
+				gui.add( setting, 'postProcess' ).onChange(postProcess);
+
 				/*
 				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.threshold = Number( v ); });
 				gui.add( setting, 'strength', 0, 3, 0.01 ).onChange((v)=>{ bloomPass.strength = Number( v ); });
-				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.radius = Number( v ); });
+				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.radius = Number( v ); });*/
 				gui.add( setting, 'exposure', 0, 2, 0.01 ).onChange((v)=>{ renderer.toneMappingExposure = Math.pow( v, 4.0 ); });
-				*/
+				
 			
 			}
 
