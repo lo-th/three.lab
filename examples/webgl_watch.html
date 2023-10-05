@@ -39,11 +39,12 @@
 			import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 			import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 			import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-			import { TAARenderPass } from 'three/addons/postprocessing/TAARenderPass.js';
 			import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+			import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+			import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 			let composer, camera, scene, renderer; 
-			let gui, dirLight, controls, bloomPass;
+			let gui, dirLight, controls, bloomPass, fxaaPass;
 			let ready = false;
 
 			const meshs = {};
@@ -73,7 +74,7 @@
 
 				scene = new THREE.Scene();
 
-				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer = new THREE.WebGLRenderer( { antialias: true, alpha:false } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -195,30 +196,43 @@
 
 				if(b){
 
-					if(composer) return;
-					const renderScene = new RenderPass( scene, camera );
-					const taaRenderPass = new TAARenderPass( scene, camera );
-					taaRenderPass.unbiased = true;
+					if( composer ) return;
+
+					let gl2 = false;//renderer.capabilities.isWebGL2;
+
+					const renderPass = new RenderPass( scene, camera );
+					//renderPass.clearAlpha = 0;
 
 					bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
 					bloomPass.threshold = setting.threshold;
 					bloomPass.strength = setting.strength;
 					bloomPass.radius = setting.radius;
+					let target;
 
-					const outputPass = new OutputPass();
+					if(gl2){
+						target = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight, { samples: 4 } );
+					} else {
+						fxaaPass = new ShaderPass( FXAAShader );
+						const pixelRatio = renderer.getPixelRatio();
+						fxaaPass.material.uniforms[ 'resolution' ].value.set( 1 / ( window.innerWidth * pixelRatio ), 1 / ( window.innerHeight * pixelRatio ) );
+					}
 
-					composer = new EffectComposer( renderer );
+					composer = new EffectComposer( renderer, target );
 					composer.setPixelRatio( 1 ); // ensure pixel ratio is always 1 for performance reasons
 					
-					composer.addPass( renderScene );
-					composer.addPass( taaRenderPass );
+					composer.addPass( renderPass );
 					composer.addPass( bloomPass );
-
-					composer.addPass( outputPass );
+					composer.addPass( new OutputPass() );
+					if(!gl2){ 
+						composer.addPass( fxaaPass );
+						composer.addPass( fxaaPass );
+					}
+					
 				} else {
 					if(!composer) return;
 					composer.dispose();
 					composer = null;
+					bloomPass = null;
 				}
 
 				
@@ -233,10 +247,10 @@
 
 				gui.add( setting, 'postProcess' ).onChange(postProcess);
 
-				/*
-				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.threshold = Number( v ); });
-				gui.add( setting, 'strength', 0, 3, 0.01 ).onChange((v)=>{ bloomPass.strength = Number( v ); });
-				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange((v)=>{ bloomPass.radius = Number( v ); });*/
+				
+				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange(upBloom);
+				gui.add( setting, 'strength', 0, 3, 0.01 ).onChange(upBloom);
+				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange(upBloom);
 				gui.add( setting, 'exposure', 0, 2, 0.01 ).onChange((v)=>{ renderer.toneMappingExposure = Math.pow( v, 4.0 ); });
 				
 			
@@ -247,6 +261,15 @@
 				if(!ready) return;
 				materials.Gold.metalness = materials.Silver.metalness = setting.metalness;
 				materials.Gold.roughness = materials.Silver.roughness = setting.roughness;
+			
+			}
+
+			function upBloom() {
+
+				if( !bloomPass ) return;
+				bloomPass.threshold = setting.threshold;
+				bloomPass.strength = setting.strength;
+				bloomPass.radius = setting.radius;
 			
 			}
 
@@ -280,7 +303,14 @@
 				camera.aspect = width / height;
 				camera.updateProjectionMatrix();
 				renderer.setSize( width, height );
-				if( composer ) composer.setSize( width, height );
+				if( composer ){ 
+					composer.setSize( width, height );
+					if(fxaaPass){
+						const pr = renderer.getPixelRatio();
+						fxaaPass.material.uniforms[ 'resolution' ].value.set( 1 / ( width * pr ), 1 / ( height * pr ) );
+					}
+					
+				}
 
 			}
 
