@@ -4,6 +4,7 @@
 		"webgl_disolve",
 		"webgl_animation_walk",
 		"webgl_auto_svg",
-		"webgl_watch"
+		"webgl_watch",
+		"webgl_materials_sss"
 	]
 }
