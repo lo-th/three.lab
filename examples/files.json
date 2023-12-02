@@ -5,6 +5,7 @@
 		"webgl_animation_walk",
 		"webgl_auto_svg",
 		"webgl_watch",
-		"webgl_materials_sss"
+		"webgl_materials_sss",
+		"webgl_gpgpu_water_up"
 	]
 }
