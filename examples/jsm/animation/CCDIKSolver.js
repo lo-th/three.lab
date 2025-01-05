@@ -111,8 +111,7 @@ class CCDIKSolver {
 
 				const link = bones[ links[ j ].index ];
 
-				// skip this link and following links.
-				// this skip is used for MMD performance optimization.
+				// skip this link and following links
 				if ( links[ j ].enabled === false ) break;
 
 				const limitation = links[ j ].limitation;
@@ -213,11 +212,12 @@ class CCDIKSolver {
 	/**
 	 * Creates Helper
 	 *
+	 * @param {number} sphereSize
 	 * @return {CCDIKHelper}
 	 */
-	createHelper() {
+	createHelper( sphereSize ) {
 
-		return new CCDIKHelper( this.mesh, this.iks );
+		return new CCDIKHelper( this.mesh, this.iks, sphereSize );
 
 	}
 
@@ -280,6 +280,7 @@ function setPositionOfBoneToAttributeArray( array, index, bone, matrixWorldInv )
  *
  * @param {SkinnedMesh} mesh
  * @param {Array<Object>} iks
+ * @param {number} sphereSize
  */
 class CCDIKHelper extends Object3D {
 
@@ -329,6 +330,8 @@ class CCDIKHelper extends Object3D {
 
 	/**
 	 * Updates IK bones visualization.
+	 *
+	 * @param {Boolean} force
 	 */
 	updateMatrixWorld( force ) {
 

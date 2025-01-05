@@ -5,6 +5,7 @@ import {
 	BufferGeometry,
 	ClampToEdgeWrapping,
 	Color,
+	ColorManagement,
 	DirectionalLight,
 	EquirectangularReflectionMapping,
 	Euler,
@@ -23,13 +24,14 @@ import {
 	MeshPhongMaterial,
 	NumberKeyframeTrack,
 	Object3D,
-	OrthographicCamera,
 	PerspectiveCamera,
 	PointLight,
 	PropertyBinding,
 	Quaternion,
 	QuaternionKeyframeTrack,
 	RepeatWrapping,
+	SRGBColorSpace,
+	ShapeUtils,
 	Skeleton,
 	SkinnedMesh,
 	SpotLight,
@@ -39,10 +41,9 @@ import {
 	Vector2,
 	Vector3,
 	Vector4,
-	VectorKeyframeTrack,
-	SRGBColorSpace,
-	ShapeUtils
+	VectorKeyframeTrack
 } from 'three';
+
 import * as fflate from '../libs/fflate.module.js';
 import { NURBSCurve } from '../curves/NURBSCurve.js';
 
@@ -407,11 +408,33 @@ class FBXTreeParser {
 	// load a texture specified as a blob or data URI, or via an external URL using TextureLoader
 	loadTexture( textureNode, images ) {
 
-		let fileName;
+		const nonNativeExtensions = new Set( [ 'tga', 'tif', 'tiff', 'exr', 'dds', 'hdr', 'ktx2' ] );
 
-		const currentPath = this.textureLoader.path;
+		const extension = textureNode.FileName.split( '.' ).pop().toLowerCase();
+
+		const loader = nonNativeExtensions.has( extension ) ? this.manager.getHandler( `.${extension}` ) : this.textureLoader;
+
+		if ( ! loader ) {
+
+			console.warn(
+				`FBXLoader: ${extension.toUpperCase()} loader not found, creating placeholder texture for`,
+				textureNode.RelativeFilename
+			);
+			return new Texture();
+
+		}
+
+		const loaderPath = loader.path;
+
+		if ( ! loaderPath ) {
+
+			loader.setPath( this.textureLoader.path );
+
+		}
 
 		const children = connections.get( textureNode.id ).children;
+
+		let fileName;
 
 		if ( children !== undefined && children.length > 0 && images[ children[ 0 ].ID ] !== undefined ) {
 
@@ -419,60 +442,16 @@ class FBXTreeParser {
 
 			if ( fileName.indexOf( 'blob:' ) === 0 || fileName.indexOf( 'data:' ) === 0 ) {
 
-				this.textureLoader.setPath( undefined );
+				loader.setPath( undefined );
 
 			}
 
 		}
 
-		let texture;
+		const texture = loader.load( fileName );
 
-		const extension = textureNode.FileName.slice( - 3 ).toLowerCase();
-
-		if ( extension === 'tga' ) {
-
-			const loader = this.manager.getHandler( '.tga' );
-
-			if ( loader === null ) {
-
-				console.warn( 'FBXLoader: TGA loader not found, creating placeholder texture for', textureNode.RelativeFilename );
-				texture = new Texture();
-
-			} else {
-
-				loader.setPath( this.textureLoader.path );
-				texture = loader.load( fileName );
-
-			}
-
-		} else if ( extension === 'dds' ) {
-
-			const loader = this.manager.getHandler( '.dds' );
-
-			if ( loader === null ) {
-
-				console.warn( 'FBXLoader: DDS loader not found, creating placeholder texture for', textureNode.RelativeFilename );
-				texture = new Texture();
-
-			} else {
-
-				loader.setPath( this.textureLoader.path );
-				texture = loader.load( fileName );
-
-			}
-
-		} else if ( extension === 'psd' ) {
-
-			console.warn( 'FBXLoader: PSD textures are not supported, creating placeholder texture for', textureNode.RelativeFilename );
-			texture = new Texture();
-
-		} else {
-
-			texture = this.textureLoader.load( fileName );
-
-		}
-
-		this.textureLoader.setPath( currentPath );
+		// revert to initial path
+		loader.setPath( loaderPath );
 
 		return texture;
 
@@ -560,12 +539,12 @@ class FBXTreeParser {
 
 		if ( materialNode.Diffuse ) {
 
-			parameters.color = new Color().fromArray( materialNode.Diffuse.value ).convertSRGBToLinear();
+			parameters.color = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.Diffuse.value ), SRGBColorSpace );
 
 		} else if ( materialNode.DiffuseColor && ( materialNode.DiffuseColor.type === 'Color' || materialNode.DiffuseColor.type === 'ColorRGB' ) ) {
 
 			// The blender exporter exports diffuse here instead of in materialNode.Diffuse
-			parameters.color = new Color().fromArray( materialNode.DiffuseColor.value ).convertSRGBToLinear();
+			parameters.color = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.DiffuseColor.value ), SRGBColorSpace );
 
 		}
 
@@ -577,12 +556,12 @@ class FBXTreeParser {
 
 		if ( materialNode.Emissive ) {
 
-			parameters.emissive = new Color().fromArray( materialNode.Emissive.value ).convertSRGBToLinear();
+			parameters.emissive = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.Emissive.value ), SRGBColorSpace );
 
 		} else if ( materialNode.EmissiveColor && ( materialNode.EmissiveColor.type === 'Color' || materialNode.EmissiveColor.type === 'ColorRGB' ) ) {
 
 			// The blender exporter exports emissive color here instead of in materialNode.Emissive
-			parameters.emissive = new Color().fromArray( materialNode.EmissiveColor.value ).convertSRGBToLinear();
+			parameters.emissive = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.EmissiveColor.value ), SRGBColorSpace );
 
 		}
 
@@ -592,9 +571,19 @@ class FBXTreeParser {
 
 		}
 
-		if ( materialNode.Opacity ) {
+		// the transparency handling is implemented based on Blender/Unity's approach: https://github.com/sobotka/blender-addons/blob/7d80f2f97161fc8e353a657b179b9aa1f8e5280b/io_scene_fbx/import_fbx.py#L1444-L1459
 
-			parameters.opacity = parseFloat( materialNode.Opacity.value );
+		parameters.opacity = 1 - ( materialNode.TransparencyFactor ? parseFloat( materialNode.TransparencyFactor.value ) : 0 );
+
+		if ( parameters.opacity === 1 || parameters.opacity === 0 ) {
+
+			parameters.opacity = ( materialNode.Opacity ? parseFloat( materialNode.Opacity.value ) : null );
+
+			if ( parameters.opacity === null ) {
+
+				parameters.opacity = 1 - ( materialNode.TransparentColor ? parseFloat( materialNode.TransparentColor.value[ 0 ] ) : 0 );
+
+			}
 
 		}
 
@@ -618,12 +607,12 @@ class FBXTreeParser {
 
 		if ( materialNode.Specular ) {
 
-			parameters.specular = new Color().fromArray( materialNode.Specular.value ).convertSRGBToLinear();
+			parameters.specular = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.Specular.value ), SRGBColorSpace );
 
 		} else if ( materialNode.SpecularColor && materialNode.SpecularColor.type === 'Color' ) {
 
 			// The blender exporter exports specular color here instead of in materialNode.Specular
-			parameters.specular = new Color().fromArray( materialNode.SpecularColor.value ).convertSRGBToLinear();
+			parameters.specular = ColorManagement.toWorkingColorSpace( new Color().fromArray( materialNode.SpecularColor.value ), SRGBColorSpace );
 
 		}
 
@@ -1116,7 +1105,8 @@ class FBXTreeParser {
 					break;
 
 				case 1: // Orthographic
-					model = new OrthographicCamera( - width / 2, width / 2, height / 2, - height / 2, nearClippingPlane, farClippingPlane );
+					console.warn( 'THREE.FBXLoader: Orthographic cameras not supported yet.' );
+					model = new Object3D();
 					break;
 
 				default:
@@ -1173,7 +1163,7 @@ class FBXTreeParser {
 
 			if ( lightAttribute.Color !== undefined ) {
 
-				color = new Color().fromArray( lightAttribute.Color.value ).convertSRGBToLinear();
+				color = ColorManagement.toWorkingColorSpace( new Color().fromArray( lightAttribute.Color.value ), SRGBColorSpace );
 
 			}
 
@@ -1351,7 +1341,7 @@ class FBXTreeParser {
 		if ( 'InheritType' in modelNode ) transformData.inheritType = parseInt( modelNode.InheritType.value );
 
 		if ( 'RotationOrder' in modelNode ) transformData.eulerOrder = getEulerOrder( modelNode.RotationOrder.value );
-		else transformData.eulerOrder = 'ZYX';
+		else transformData.eulerOrder = getEulerOrder( 0 );
 
 		if ( 'Lcl_Translation' in modelNode ) transformData.translation = modelNode.Lcl_Translation.value;
 
@@ -1499,7 +1489,7 @@ class FBXTreeParser {
 
 				if ( r !== 0 || g !== 0 || b !== 0 ) {
 
-					const color = new Color( r, g, b ).convertSRGBToLinear();
+					const color = new Color().setRGB( r, g, b, SRGBColorSpace );
 					sceneGraph.add( new AmbientLight( color, 1 ) );
 
 				}
@@ -2051,14 +2041,18 @@ class GeometryParser {
 			// Triangulate n-gon using earcut
 
 			const vertices = [];
-
+			// in morphing scenario vertexPositions represent morphPositions
+			// while baseVertexPositions represent the original geometry's positions
+			const positions = geoInfo.baseVertexPositions || geoInfo.vertexPositions;
 			for ( let i = 0; i < facePositionIndexes.length; i += 3 ) {
 
-				vertices.push( new Vector3(
-					geoInfo.vertexPositions[ facePositionIndexes[ i ] ],
-					geoInfo.vertexPositions[ facePositionIndexes[ i + 1 ] ],
-					geoInfo.vertexPositions[ facePositionIndexes[ i + 2 ] ]
-				) );
+				vertices.push(
+					new Vector3(
+						positions[ facePositionIndexes[ i ] ],
+						positions[ facePositionIndexes[ i + 1 ] ],
+						positions[ facePositionIndexes[ i + 2 ] ]
+					)
+				);
 
 			}
 
@@ -2071,6 +2065,12 @@ class GeometryParser {
 
 			}
 
+			// When vertices is an array of [0,0,0] elements (which is the case for vertices not participating in morph)
+			// the triangulationInput will be an array of [0,0] elements
+			// resulting in an array of 0 triangles being returned from ShapeUtils.triangulateShape
+			// leading to not pushing into buffers.vertex the redundant vertices (the vertices that are not morphed).
+			// That's why, in order to support morphing scenario, "positions" is looking first for baseVertexPositions,
+			// so that we don't end up with an array of 0 triangles for the faces not participating in morph.
 			triangles = ShapeUtils.triangulateShape( triangulationInput, [] );
 
 		} else {
@@ -2225,17 +2225,18 @@ class GeometryParser {
 	// Normal and position attributes only have data for the vertices that are affected by the morph
 	genMorphGeometry( parentGeo, parentGeoNode, morphGeoNode, preTransform, name ) {
 
-		const vertexIndices = ( parentGeoNode.PolygonVertexIndex !== undefined ) ? parentGeoNode.PolygonVertexIndex.a : [];
+		const basePositions = parentGeoNode.Vertices !== undefined ? parentGeoNode.Vertices.a : [];
+		const baseIndices = parentGeoNode.PolygonVertexIndex !== undefined ? parentGeoNode.PolygonVertexIndex.a : [];
 
-		const morphPositionsSparse = ( morphGeoNode.Vertices !== undefined ) ? morphGeoNode.Vertices.a : [];
-		const indices = ( morphGeoNode.Indexes !== undefined ) ? morphGeoNode.Indexes.a : [];
+		const morphPositionsSparse = morphGeoNode.Vertices !== undefined ? morphGeoNode.Vertices.a : [];
+		const morphIndices = morphGeoNode.Indexes !== undefined ? morphGeoNode.Indexes.a : [];
 
 		const length = parentGeo.attributes.position.count * 3;
 		const morphPositions = new Float32Array( length );
 
-		for ( let i = 0; i < indices.length; i ++ ) {
+		for ( let i = 0; i < morphIndices.length; i ++ ) {
 
-			const morphIndex = indices[ i ] * 3;
+			const morphIndex = morphIndices[ i ] * 3;
 
 			morphPositions[ morphIndex ] = morphPositionsSparse[ i * 3 ];
 			morphPositions[ morphIndex + 1 ] = morphPositionsSparse[ i * 3 + 1 ];
@@ -2245,9 +2246,9 @@ class GeometryParser {
 
 		// TODO: add morph normal support
 		const morphGeoInfo = {
-			vertexIndices: vertexIndices,
+			vertexIndices: baseIndices,
 			vertexPositions: morphPositions,
-
+			baseVertexPositions: basePositions
 		};
 
 		const morphBuffers = this.genBuffers( morphGeoInfo );
@@ -2330,7 +2331,9 @@ class GeometryParser {
 
 		for ( let i = 0, c = new Color(); i < buffer.length; i += 4 ) {
 
-			c.fromArray( buffer, i ).convertSRGBToLinear().toArray( buffer, i );
+			c.fromArray( buffer, i );
+			ColorManagement.toWorkingColorSpace( c, SRGBColorSpace );
+			c.toArray( buffer, i );
 
 		}
 
@@ -2820,10 +2823,13 @@ class AnimationParser {
 
 		}
 
+		// For Maya models using "Joint Orient", Euler order only applies to rotation, not pre/post-rotations
+		const defaultEulerOrder = getEulerOrder( 0 );
+
 		if ( preRotation !== undefined ) {
 
 			preRotation = preRotation.map( MathUtils.degToRad );
-			preRotation.push( eulerOrder );
+			preRotation.push( defaultEulerOrder );
 
 			preRotation = new Euler().fromArray( preRotation );
 			preRotation = new Quaternion().setFromEuler( preRotation );
@@ -2833,7 +2839,7 @@ class AnimationParser {
 		if ( postRotation !== undefined ) {
 
 			postRotation = postRotation.map( MathUtils.degToRad );
-			postRotation.push( eulerOrder );
+			postRotation.push( defaultEulerOrder );
 
 			postRotation = new Euler().fromArray( postRotation );
 			postRotation = new Quaternion().setFromEuler( postRotation ).invert();
@@ -2845,7 +2851,7 @@ class AnimationParser {
 
 		const quaternionValues = [];
 
-		if ( ! values || ! times ) return new QuaternionKeyframeTrack( modelName + '.quaternion', [], [] );
+		if ( ! values || ! times ) return new QuaternionKeyframeTrack( modelName + '.quaternion', [ 0 ], [ 0 ] );
 
 		for ( let i = 0; i < values.length; i += 3 ) {
 
@@ -4145,10 +4151,13 @@ function generateTransform( transformData ) {
 
 	if ( transformData.translation ) lTranslationM.setPosition( tempVec.fromArray( transformData.translation ) );
 
+	// For Maya models using "Joint Orient", Euler order only applies to rotation, not pre/post-rotations
+	const defaultEulerOrder = getEulerOrder( 0 );
+
 	if ( transformData.preRotation ) {
 
 		const array = transformData.preRotation.map( MathUtils.degToRad );
-		array.push( transformData.eulerOrder || Euler.DEFAULT_ORDER );
+		array.push( defaultEulerOrder );
 		lPreRotationM.makeRotationFromEuler( tempEuler.fromArray( array ) );
 
 	}
@@ -4156,7 +4165,7 @@ function generateTransform( transformData ) {
 	if ( transformData.rotation ) {
 
 		const array = transformData.rotation.map( MathUtils.degToRad );
-		array.push( transformData.eulerOrder || Euler.DEFAULT_ORDER );
+		array.push( transformData.eulerOrder || defaultEulerOrder );
 		lRotationM.makeRotationFromEuler( tempEuler.fromArray( array ) );
 
 	}
@@ -4164,7 +4173,7 @@ function generateTransform( transformData ) {
 	if ( transformData.postRotation ) {
 
 		const array = transformData.postRotation.map( MathUtils.degToRad );
-		array.push( transformData.eulerOrder || Euler.DEFAULT_ORDER );
+		array.push( defaultEulerOrder );
 		lPostRotationM.makeRotationFromEuler( tempEuler.fromArray( array ) );
 		lPostRotationM.invert();
 

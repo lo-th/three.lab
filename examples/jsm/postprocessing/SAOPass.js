@@ -19,8 +19,7 @@ import {
 } from 'three';
 import { Pass, FullScreenQuad } from './Pass.js';
 import { SAOShader } from '../shaders/SAOShader.js';
-import { DepthLimitedBlurShader } from '../shaders/DepthLimitedBlurShader.js';
-import { BlurShaderUtils } from '../shaders/DepthLimitedBlurShader.js';
+import { BlurShaderUtils, DepthLimitedBlurShader } from '../shaders/DepthLimitedBlurShader.js';
 import { CopyShader } from '../shaders/CopyShader.js';
 
 /**
@@ -81,7 +80,6 @@ class SAOPass extends Pass {
 			vertexShader: SAOShader.vertexShader,
 			uniforms: UniformsUtils.clone( SAOShader.uniforms )
 		} );
-		this.saoMaterial.extensions.derivatives = true;
 		this.saoMaterial.defines[ 'PERSPECTIVE_CAMERA' ] = this.camera.isPerspectiveCamera ? 1 : 0;
 		this.saoMaterial.uniforms[ 'tDepth' ].value = depthTexture;
 		this.saoMaterial.uniforms[ 'tNormal' ].value = this.normalRenderTarget.texture;

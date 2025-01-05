@@ -87,6 +87,12 @@ class GLTFLoader extends Loader {
 
 		this.register( function ( parser ) {
 
+			return new GLTFMaterialsDispersionExtension( parser );
+
+		} );
+
+		this.register( function ( parser ) {
+
 			return new GLTFTextureBasisUExtension( parser );
 
 		} );
@@ -258,16 +264,6 @@ class GLTFLoader extends Loader {
 
 		this.dracoLoader = dracoLoader;
 		return this;
-
-	}
-
-	setDDSLoader() {
-
-		throw new Error(
-
-			'THREE.GLTFLoader: "MSFT_texture_dds" no longer supported. Please update to "KHR_texture_basisu".'
-
-		);
 
 	}
 
@@ -491,6 +487,7 @@ const EXTENSIONS = {
 	KHR_DRACO_MESH_COMPRESSION: 'KHR_draco_mesh_compression',
 	KHR_LIGHTS_PUNCTUAL: 'KHR_lights_punctual',
 	KHR_MATERIALS_CLEARCOAT: 'KHR_materials_clearcoat',
+	KHR_MATERIALS_DISPERSION: 'KHR_materials_dispersion',
 	KHR_MATERIALS_IOR: 'KHR_materials_ior',
 	KHR_MATERIALS_SHEEN: 'KHR_materials_sheen',
 	KHR_MATERIALS_SPECULAR: 'KHR_materials_specular',
@@ -819,6 +816,52 @@ class GLTFMaterialsClearcoatExtension {
 		}
 
 		return Promise.all( pending );
+
+	}
+
+}
+
+/**
+ * Materials dispersion Extension
+ *
+ * Specification: https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_dispersion
+ */
+class GLTFMaterialsDispersionExtension {
+
+	constructor( parser ) {
+
+		this.parser = parser;
+		this.name = EXTENSIONS.KHR_MATERIALS_DISPERSION;
+
+	}
+
+	getMaterialType( materialIndex ) {
+
+		const parser = this.parser;
+		const materialDef = parser.json.materials[ materialIndex ];
+
+		if ( ! materialDef.extensions || ! materialDef.extensions[ this.name ] ) return null;
+
+		return MeshPhysicalMaterial;
+
+	}
+
+	extendMaterialParams( materialIndex, materialParams ) {
+
+		const parser = this.parser;
+		const materialDef = parser.json.materials[ materialIndex ];
+
+		if ( ! materialDef.extensions || ! materialDef.extensions[ this.name ] ) {
+
+			return Promise.resolve();
+
+		}
+
+		const extension = materialDef.extensions[ this.name ];
+
+		materialParams.dispersion = extension.dispersion !== undefined ? extension.dispersion : 0;
+
+		return Promise.resolve();
 
 	}
 
@@ -2212,6 +2255,9 @@ const ALPHA_MODES = {
 
 /**
  * Specification: https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#default-material
+ *
+ * @param {Object<String, Material>} cache
+ * @return {Material}
  */
 function createDefaultMaterial( cache ) {
 
@@ -2482,6 +2528,7 @@ function getImageURIMimeType( uri ) {
 
 	if ( uri.search( /\.jpe?g($|\?)/i ) > 0 || uri.search( /^data\:image\/jpeg/ ) === 0 ) return 'image/jpeg';
 	if ( uri.search( /\.webp($|\?)/i ) > 0 || uri.search( /^data\:image\/webp/ ) === 0 ) return 'image/webp';
+	if ( uri.search( /\.ktx2($|\?)/i ) > 0 || uri.search( /^data\:image\/ktx2/ ) === 0 ) return 'image/ktx2';
 
 	return 'image/png';
 
@@ -2527,18 +2574,24 @@ class GLTFParser {
 		// expensive work of uploading a texture to the GPU off the main thread.
 
 		let isSafari = false;
+		let safariVersion = - 1;
 		let isFirefox = false;
 		let firefoxVersion = - 1;
 
 		if ( typeof navigator !== 'undefined' ) {
 
-			isSafari = /^((?!chrome|android).)*safari/i.test( navigator.userAgent ) === true;
-			isFirefox = navigator.userAgent.indexOf( 'Firefox' ) > - 1;
-			firefoxVersion = isFirefox ? navigator.userAgent.match( /Firefox\/([0-9]+)\./ )[ 1 ] : - 1;
+			const userAgent = navigator.userAgent;
+
+			isSafari = /^((?!chrome|android).)*safari/i.test( userAgent ) === true;
+			const safariMatch = userAgent.match( /Version\/(\d+)/ );
+			safariVersion = isSafari && safariMatch ? parseInt( safariMatch[ 1 ], 10 ) : - 1;
+
+			isFirefox = userAgent.indexOf( 'Firefox' ) > - 1;
+			firefoxVersion = isFirefox ? userAgent.match( /Firefox\/([0-9]+)\./ )[ 1 ] : - 1;
 
 		}
 
-		if ( typeof createImageBitmap === 'undefined' || isSafari || ( isFirefox && firefoxVersion < 98 ) ) {
+		if ( typeof createImageBitmap === 'undefined' || ( isSafari && safariVersion < 17 ) || ( isFirefox && firefoxVersion < 98 ) ) {
 
 			this.textureLoader = new TextureLoader( this.options.manager );
 
@@ -2627,6 +2680,12 @@ class GLTFParser {
 
 			} ) ).then( function () {
 
+				for ( const scene of result.scenes ) {
+
+					scene.updateMatrixWorld();
+
+				}
+
 				onLoad( result );
 
 			} );
@@ -2697,6 +2756,9 @@ class GLTFParser {
 	 * Textures) can be reused directly and are not marked here.
 	 *
 	 * Example: CesiumMilkTruck sample model reuses "Wheel" meshes.
+	 *
+	 * @param {Object} cache
+	 * @param {Object3D} index
 	 */
 	_addNodeRef( cache, index ) {
 
@@ -2712,7 +2774,14 @@ class GLTFParser {
 
 	}
 
-	/** Returns a reference to a shared resource, cloning it if necessary. */
+	/**
+	 * Returns a reference to a shared resource, cloning it if necessary.
+	 *
+	 * @param {Object} cache
+	 * @param {Number} index
+	 * @param {Object} object
+	 * @return {Object}
+	 */
 	_getNodeRef( cache, index, object ) {
 
 		if ( cache.refs[ index ] <= 1 ) return object;
@@ -3088,6 +3157,9 @@ class GLTFParser {
 
 				}
 
+				// Ignore normalized since we copy from sparse
+				bufferAttribute.normalized = false;
+
 				for ( let i = 0, il = sparseIndices.length; i < il; i ++ ) {
 
 					const index = sparseIndices[ i ];
@@ -3099,6 +3171,8 @@ class GLTFParser {
 					if ( itemSize >= 5 ) throw new Error( 'THREE.GLTFLoader: Unsupported itemSize in sparse BufferAttribute.' );
 
 				}
+
+				bufferAttribute.normalized = normalized;
 
 			}
 
@@ -3170,6 +3244,7 @@ class GLTFParser {
 			texture.minFilter = WEBGL_FILTERS[ sampler.minFilter ] || LinearMipmapLinearFilter;
 			texture.wrapS = WEBGL_WRAPPINGS[ sampler.wrapS ] || RepeatWrapping;
 			texture.wrapT = WEBGL_WRAPPINGS[ sampler.wrapT ] || RepeatWrapping;
+			texture.generateMipmaps = ! texture.isCompressedTexture && texture.minFilter !== NearestFilter && texture.minFilter !== LinearFilter;
 
 			parser.associations.set( texture, { textures: textureIndex } );
 
@@ -3258,6 +3333,8 @@ class GLTFParser {
 
 			}
 
+			assignExtrasToUserData( texture, sourceDef );
+
 			texture.userData.mimeType = sourceDef.mimeType || getImageURIMimeType( sourceDef.uri );
 
 			return texture;
@@ -3276,9 +3353,11 @@ class GLTFParser {
 
 	/**
 	 * Asynchronously assigns a texture to the given material parameters.
+	 *
 	 * @param {Object} materialParams
 	 * @param {string} mapName
 	 * @param {Object} mapDef
+	 * @param {string} colorSpace
 	 * @return {Promise<Texture>}
 	 */
 	assignTexture( materialParams, mapName, mapDef, colorSpace ) {
@@ -3587,7 +3666,12 @@ class GLTFParser {
 
 	}
 
-	/** When Object3D instances are targeted by animation, they need unique names. */
+	/**
+	 * When Object3D instances are targeted by animation, they need unique names.
+	 *
+	 * @param {String} originalName
+	 * @return {String}
+	 */
 	createUniqueName( originalName ) {
 
 		const sanitizedName = PropertyBinding.sanitizeNodeName( originalName || '' );

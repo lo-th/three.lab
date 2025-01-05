@@ -26,9 +26,12 @@ class CSS2DObject extends Object3D {
 
 			this.traverse( function ( object ) {
 
-				if ( object.element instanceof Element && object.element.parentNode !== null ) {
+				if (
+					object.element instanceof object.element.ownerDocument.defaultView.Element &&
+					object.element.parentNode !== null
+				) {
 
-					object.element.parentNode.removeChild( object.element );
+					object.element.remove();
 
 				}
 
@@ -114,21 +117,41 @@ class CSS2DRenderer {
 
 		};
 
+		function hideObject( object ) {
+
+			if ( object.isCSS2DObject ) object.element.style.display = 'none';
+
+			for ( let i = 0, l = object.children.length; i < l; i ++ ) {
+
+				hideObject( object.children[ i ] );
+
+			}
+
+		}
+
 		function renderObject( object, scene, camera ) {
+
+			if ( object.visible === false ) {
+
+				hideObject( object );
+
+				return;
+
+			}
 
 			if ( object.isCSS2DObject ) {
 
 				_vector.setFromMatrixPosition( object.matrixWorld );
 				_vector.applyMatrix4( _viewProjectionMatrix );
 
-				const visible = ( object.visible === true ) && ( _vector.z >= - 1 && _vector.z <= 1 ) && ( object.layers.test( camera.layers ) === true );
-				object.element.style.display = ( visible === true ) ? '' : 'none';
+				const visible = ( _vector.z >= - 1 && _vector.z <= 1 ) && ( object.layers.test( camera.layers ) === true );
+
+				const element = object.element;
+				element.style.display = visible === true ? '' : 'none';
 
 				if ( visible === true ) {
 
 					object.onBeforeRender( _this, scene, camera );
-
-					const element = object.element;
 
 					element.style.transform = 'translate(' + ( - 100 * object.center.x ) + '%,' + ( - 100 * object.center.y ) + '%)' + 'translate(' + ( _vector.x * _widthHalf + _widthHalf ) + 'px,' + ( - _vector.y * _heightHalf + _heightHalf ) + 'px)';
 
@@ -171,7 +194,7 @@ class CSS2DRenderer {
 
 			const result = [];
 
-			scene.traverse( function ( object ) {
+			scene.traverseVisible( function ( object ) {
 
 				if ( object.isCSS2DObject ) result.push( object );
 

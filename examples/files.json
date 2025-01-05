@@ -7,6 +7,8 @@
 		"webgl_watch",
 		"webgl_materials_sss",
 		"webgl_gpgpu_water_up",
-		"webgl_enhanceLighting"
+		"webgl_enhance_lighting",
+		"webgl_dynamics_lighting",
+		"webgl_dynamic_env"
 	]
 }

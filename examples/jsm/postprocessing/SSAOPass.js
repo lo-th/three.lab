@@ -13,7 +13,6 @@ import {
 	NearestFilter,
 	NoBlending,
 	RedFormat,
-	LuminanceFormat,
 	DepthStencilFormat,
 	UnsignedInt248Type,
 	RepeatWrapping,
@@ -25,9 +24,7 @@ import {
 } from 'three';
 import { Pass, FullScreenQuad } from './Pass.js';
 import { SimplexNoise } from '../math/SimplexNoise.js';
-import { SSAOShader } from '../shaders/SSAOShader.js';
-import { SSAOBlurShader } from '../shaders/SSAOShader.js';
-import { SSAODepthShader } from '../shaders/SSAOShader.js';
+import { SSAOBlurShader, SSAODepthShader, SSAOShader } from '../shaders/SSAOShader.js';
 import { CopyShader } from '../shaders/CopyShader.js';
 
 class SSAOPass extends Pass {
@@ -40,6 +37,7 @@ class SSAOPass extends Pass {
 		this.height = ( height !== undefined ) ? height : 512;
 
 		this.clear = true;
+		this.needsSwap = false;
 
 		this.camera = camera;
 		this.scene = scene;
@@ -169,15 +167,13 @@ class SSAOPass extends Pass {
 		this.copyMaterial.dispose();
 		this.depthRenderMaterial.dispose();
 
-		// dipsose full screen quad
+		// dispose full screen quad
 
 		this.fsQuad.dispose();
 
 	}
 
 	render( renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
-
-		if ( renderer.capabilities.isWebGL2 === false ) this.noiseTexture.format = LuminanceFormat;
 
 		// render normals and depth (honor only meshes, points and lines do not contribute to SSAO)
 
@@ -204,7 +200,7 @@ class SSAOPass extends Pass {
 
 				this.copyMaterial.uniforms[ 'tDiffuse' ].value = this.ssaoRenderTarget.texture;
 				this.copyMaterial.blending = NoBlending;
-				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer );
+				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : readBuffer );
 
 				break;
 
@@ -212,13 +208,13 @@ class SSAOPass extends Pass {
 
 				this.copyMaterial.uniforms[ 'tDiffuse' ].value = this.blurRenderTarget.texture;
 				this.copyMaterial.blending = NoBlending;
-				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer );
+				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : readBuffer );
 
 				break;
 
 			case SSAOPass.OUTPUT.Depth:
 
-				this.renderPass( renderer, this.depthRenderMaterial, this.renderToScreen ? null : writeBuffer );
+				this.renderPass( renderer, this.depthRenderMaterial, this.renderToScreen ? null : readBuffer );
 
 				break;
 
@@ -226,19 +222,15 @@ class SSAOPass extends Pass {
 
 				this.copyMaterial.uniforms[ 'tDiffuse' ].value = this.normalRenderTarget.texture;
 				this.copyMaterial.blending = NoBlending;
-				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer );
+				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : readBuffer );
 
 				break;
 
 			case SSAOPass.OUTPUT.Default:
 
-				this.copyMaterial.uniforms[ 'tDiffuse' ].value = readBuffer.texture;
-				this.copyMaterial.blending = NoBlending;
-				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer );
-
 				this.copyMaterial.uniforms[ 'tDiffuse' ].value = this.blurRenderTarget.texture;
 				this.copyMaterial.blending = CustomBlending;
-				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer );
+				this.renderPass( renderer, this.copyMaterial, this.renderToScreen ? null : readBuffer );
 
 				break;
 

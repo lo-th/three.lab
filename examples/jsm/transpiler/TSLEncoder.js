@@ -1,6 +1,7 @@
-import { REVISION } from 'three';
+import { REVISION } from 'three/webgpu';
+import * as TSL from 'three/tsl';
+
 import { VariableDeclaration, Accessor } from './AST.js';
-import * as Nodes from '../nodes/Nodes.js';
 
 const opLib = {
 	'=': 'assign',
@@ -43,7 +44,7 @@ const unaryLib = {
 	'--': 'decrement' // decrementBefore
 };
 
-const isPrimitive = ( value ) => /^(true|false|-?\d)/.test( value );
+const isPrimitive = ( value ) => /^(true|false|-?(\d|\.\d))/.test( value );
 
 class TSLEncoder {
 
@@ -53,7 +54,6 @@ class TSLEncoder {
 		this.imports = new Set();
 		this.global = new Set();
 		this.overloadings = new Map();
-		this.layoutsCode = '';
 		this.iife = false;
 		this.uniqueNames = false;
 		this.reference = false;
@@ -69,7 +69,7 @@ class TSLEncoder {
 
 		name = name.split( '.' )[ 0 ];
 
-		if ( Nodes[ name ] !== undefined && this.global.has( name ) === false && this._currentProperties[ name ] === undefined ) {
+		if ( TSL[ name ] !== undefined && this.global.has( name ) === false && this._currentProperties[ name ] === undefined ) {
 
 			this.imports.add( name );
 
@@ -159,6 +159,10 @@ class TSLEncoder {
 
 				this.addImport( opFn );
 
+			} else if ( opFn === '.' ) {
+
+				code = left + opFn + right;
+
 			} else {
 
 				code = left + '.' + opFn + '( ' + right + ' )';
@@ -193,7 +197,7 @@ class TSLEncoder {
 
 		} else if ( node.isAccessorElements ) {
 
-			code = node.property;
+			code = this.emitExpression( node.object );
 
 			for ( const element of node.elements ) {
 
@@ -249,7 +253,7 @@ class TSLEncoder {
 
 		} else if ( node.isUnary && node.expression.isNumber ) {
 
-			code = node.type + ' ' + node.expression.value;
+			code = node.expression.type + '( ' + node.type + ' ' + node.expression.value + ' )';
 
 		} else if ( node.isUnary ) {
 
@@ -323,9 +327,9 @@ class TSLEncoder {
 		const leftStr = this.emitExpression( node.left );
 		const rightStr = this.emitExpression( node.right );
 
-		this.addImport( 'cond' );
+		this.addImport( 'select' );
 
-		return `cond( ${ condStr }, ${ leftStr }, ${ rightStr } )`;
+		return `select( ${ condStr }, ${ leftStr }, ${ rightStr } )`;
 
 	}
 
@@ -350,7 +354,7 @@ ${ this.tab }} )`;
 
 				const elseCondStr = this.emitExpression( current.elseConditional.cond );
 
-				ifStr += `.elseif( ${ elseCondStr }, () => {
+				ifStr += `.ElseIf( ${ elseCondStr }, () => {
 
 ${ elseBodyStr }
 
@@ -358,7 +362,7 @@ ${ this.tab }} )`;
 
 			} else {
 
-				ifStr += `.else( () => {
+				ifStr += `.Else( () => {
 
 ${ elseBodyStr }
 
@@ -392,13 +396,13 @@ ${ this.tab }} )`;
 		const conditionParam = condition !== '<' ? `, condition: '${ condition }'` : '';
 		const updateParam = update !== '++' ? `, update: '${ update }'` : '';
 
-		let loopStr = `loop( { start: ${ start }, end: ${ end + nameParam + typeParam + conditionParam + updateParam } }, ( { ${ name } } ) => {\n\n`;
+		let loopStr = `Loop( { start: ${ start }, end: ${ end + nameParam + typeParam + conditionParam + updateParam } }, ( { ${ name } } ) => {\n\n`;
 
 		loopStr += this.emitBody( node.body ) + '\n\n';
 
 		loopStr += this.tab + '} )';
 
-		this.imports.add( 'loop' );
+		this.imports.add( 'Loop' );
 
 		return loopStr;
 
@@ -502,7 +506,9 @@ ${ this.tab }} )`;
 
 		this.addImport( 'overloadingFn' );
 
-		return `const ${ name } = overloadingFn( [ ${ nodes.map( node => node.name + '_' + nodes.indexOf( node ) ).join( ', ' ) } ] );\n`;
+		const prefix = this.iife === false ? 'export ' : '';
+
+		return `${ prefix }const ${ name } = /*#__PURE__*/ overloadingFn( [ ${ nodes.map( node => node.name + '_' + nodes.indexOf( node ) ).join( ', ' ) } ] );\n`;
 
 	}
 
@@ -583,11 +589,13 @@ ${ this.tab }} )`;
 
 		}
 
-		let funcStr = `const ${ fnName } = tslFn( (${ paramsStr }) => {
+		const prefix = this.iife === false ? 'export ' : '';
+
+		let funcStr = `${ prefix }const ${ fnName } = /*#__PURE__*/ Fn( (${ paramsStr }) => {
 
 ${ bodyStr }
 
-${ this.tab }} );\n`;
+${ this.tab }} )`;
 
 		const layoutInput = inputs.length > 0 ? '\n\t\t' + this.tab + inputs.join( ',\n\t\t' + this.tab ) + '\n\t' + this.tab : '';
 
@@ -595,15 +603,17 @@ ${ this.tab }} );\n`;
 
 			const uniqueName = this.uniqueNames ? fnName + '_' + Math.random().toString( 36 ).slice( 2 ) : fnName;
 
-			this.layoutsCode += `${ this.tab + fnName }.setLayout( {
+			funcStr += `.setLayout( {
 ${ this.tab }\tname: '${ uniqueName }',
 ${ this.tab }\ttype: '${ type }',
 ${ this.tab }\tinputs: [${ layoutInput }]
-${ this.tab }} );\n\n`;
+${ this.tab }} )`;
 
 		}
 
-		this.imports.add( 'tslFn' );
+		funcStr += ';\n';
+
+		this.imports.add( 'Fn' );
 
 		this.global.add( node.name );
 
@@ -685,8 +695,6 @@ ${ this.tab }} );\n\n`;
 		const imports = [ ...this.imports ];
 		const exports = [ ...this.global ];
 
-		const layouts = this.layoutsCode.length > 0 ? `\n${ this.tab }// layouts\n\n` + this.layoutsCode : '';
-
 		let header = '// Three.js Transpiler r' + REVISION + '\n\n';
 		let footer = '';
 
@@ -701,12 +709,11 @@ ${ this.tab }} );\n\n`;
 
 		} else {
 
-			header += imports.length > 0 ? 'import { ' + imports.join( ', ' ) + ' } from \'three/nodes\';\n' : '';
-			footer += exports.length > 0 ? 'export { ' + exports.join( ', ' ) + ' };\n' : '';
+			header += imports.length > 0 ? 'import { ' + imports.join( ', ' ) + ' } from \'three/tsl\';\n' : '';
 
 		}
 
-		return header + code + layouts + footer;
+		return header + code + footer;
 
 	}
 
