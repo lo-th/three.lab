@@ -9,6 +9,7 @@
 		"webgl_gpgpu_water_up",
 		"webgl_enhance_lighting",
 		"webgl_dynamics_lighting",
-		"webgl_dynamic_env"
+		"webgl_dynamic_env",
+		"backroom_fps"
 	]
 }

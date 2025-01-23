@@ -331,7 +331,6 @@
 							child.receiveShadow = true;
 							child.castShadow = true;
 
-							//if(child.name==="ak_glass" || child.name==="ak_glass_white" || child.name==="ka_glass"){
 							if(child.name.search('glass')!==-1){
 								child.castShadow = false;
 								child.receiveShadow = false;
@@ -518,8 +517,6 @@
 					bloomPass = null;
 				}
 
-				
-
 			}
 
 			function createGUI() {
@@ -531,17 +528,11 @@
 				const folder0 = gui.addFolder( 'Post Process' );
 				folder0.close();
 
-
-
-				
 				folder0.add( setting, 'threshold', 0, 1, 0.01 ).onChange(upBloom);
 				folder0.add( setting, 'strength', 0, 3, 0.01 ).onChange(upBloom);
 				folder0.add( setting, 'radius', 0, 1, 0.01 ).onChange(upBloom);
 				
-				
-
 				gui.add( options, 'enableESL' ).onChange(upMaterial);
-
 
 				const folder1 = gui.addFolder( 'Enhance Lighting' );
 				folder1.close();
@@ -574,13 +565,11 @@
 				folder1.add( options, 'irradianceIntensity', 0, 10  ).onChange(upMaterial);
 				folder1.add( options, 'radianceIntensity', 0, 10  ).onChange(upMaterial);
 
-				
-			
 			}
 
 			function upMaterial() {
 
-				scene.environmentIntensity = options.envMapIntensity
+				scene.environmentIntensity = options.envMapIntensity;
 
 				for( let name in materials ){
 					const m = materials[name];
@@ -595,7 +584,6 @@
 							}
 						}
 					}
-
 				}
 			
 			}
