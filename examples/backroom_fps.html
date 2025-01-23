@@ -94,11 +94,13 @@
 			const SPHERE_RADIUS = 0.2;
 
 			const STEPS_PER_FRAME = 5;
+
+			let ballInterval = null;
+			let needResize = false;
 			let first = true;
+			let helper = null;
 
-			const textureLoader = new THREE.TextureLoader();
-
-			
+			// material
 
 			const golfMaterial = new THREE.MeshPhysicalMaterial( {
 				metalness: 0.0,
@@ -108,12 +110,17 @@
 				clearcoatNormalScale: new THREE.Vector2( 2.0, - 2.0 )
 			});
 
-			ktx2loader.load( 'textures/compressed/golfball.ktx2', ( texture ) => { texture.colorSpace = THREE.LinearSRGBColorSpace; golfMaterial.normalMap = texture; golfMaterial.needsUpdate = true; } );
-			ktx2loader.load( 'textures/compressed/scratched.ktx2', ( texture ) => { texture.colorSpace = THREE.LinearSRGBColorSpace; golfMaterial.clearcoatNormalMap = texture; golfMaterial.needsUpdate = true; } );
+			const LevelMaterial = new THREE.MeshStandardMaterial();
 
-			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );//5
-			//const sphereGeometry = new THREE.SphereGeometry( SPHERE_RADIUS );//5
-			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xdede8d, wireframe:true } );
+			// texture
+
+			ktx2loader.load( './textures/compressed/golfball.ktx2', ( txt ) => { onTexture( txt, golfMaterial, 'normalMap' ); } );
+			ktx2loader.load( './textures/compressed/scratched.ktx2', ( txt ) => { onTexture( txt, golfMaterial, 'clearcoatNormalMap' ); } );
+			ktx2loader.load( `./textures/compressed/redgrid.ktx2`, ( txt ) => { onTexture( txt, LevelMaterial, 'map', [1,1] ); } )
+
+			// golf ball
+
+			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
 
 			const spheres = [];
 			let sphereIdx = 0;
@@ -121,14 +128,15 @@
 			const balls = new THREE.InstancedMesh( sphereGeometry, golfMaterial, NUM_SPHERES );
 			balls.instanceMatrix.setUsage( THREE.DynamicDrawUsage );
 			scene.add( balls );
+
 			balls.castShadow = true;
 			balls.receiveShadow = true;
-
 			balls.frustumCulled = false;
 
 			let playerSpeed = 4;
 			let lastTime = 0;
 			let modelReady = false;
+			let isMouseLock = false;
 
 			for ( let i = 0; i < NUM_SPHERES; i ++ ) {
 
@@ -150,8 +158,6 @@
 			let playerOnFloor = false;
 			let mouseTime = 0;
 
-			const keyStates = {};
-
 			const vector1 = new THREE.Vector3();
 			const vector2 = new THREE.Vector3();
 			const vector3 = new THREE.Vector3();
@@ -162,54 +168,114 @@
 			const tmpPosition = new THREE.Vector3();
 			const tmpScale = new THREE.Vector3();
 
-			let multyBall = null
+			// finaly load level model
+			loadModel( LevelMaterial );
 
-			loadMap();
+			const Key = {};
 
-			document.addEventListener( 'keydown', ( event ) => {
+			document.addEventListener( 'keydown', ( e ) => { Key[ e.code ] = true; } );
+			document.addEventListener( 'keyup', ( e ) => { Key[ e.code ] = false; } );
 
-				keyStates[ event.code ] = true;
+			container.addEventListener( 'mousedown', ( e ) => {
 
-			} );
-
-			document.addEventListener( 'keyup', ( event ) => {
-
-				keyStates[ event.code ] = false;
+				if ( document.pointerLockElement === null ) { document.body.requestPointerLock(); }
 
 			} );
 
-			document.addEventListener( 'mousedown', () => {
+			document.addEventListener( 'mousedown', ( e ) => {
 
-				if ( document.pointerLockElement === null ) document.body.requestPointerLock();
-				else multyBall = setInterval( throwBall, 100 )
-
-			} );
-
-			document.addEventListener( 'mouseup', () => {
-
-				if ( document.pointerLockElement !== null ) clearInterval(multyBall)
+				if ( document.pointerLockElement !== null ) ballInterval = setInterval( throwBall, 100 );
 				
 			} );
 
-			document.body.addEventListener( 'mousemove', ( event ) => {
+			document.addEventListener( 'mouseup', ( e ) => {
+
+				if ( document.pointerLockElement !== null ) clearInterval( ballInterval )
+				
+			} );
+
+			document.addEventListener( 'mousemove', ( e ) => {
 
 				if ( document.pointerLockElement === document.body ) {
 
-					camera.rotation.y -= event.movementX / 500;
-					camera.rotation.x -= event.movementY / 500;
+					camera.rotation.y -= e.movementX / 500;
+					camera.rotation.x -= e.movementY / 500;
 
 				}
 
 			} );
 
-			window.addEventListener( 'resize', onWindowResize );
+			window.addEventListener( 'resize', () => { needResize=true; } );
 
-			function onWindowResize() {
+			function loadModel( material ){
 
+				const loader = new GLTFLoader().setPath( './models/gltf/' );
+				loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) );
+				
+				loader.load( 'level.glb', ( gltf ) => {
+
+					scene.add( gltf.scene );
+
+					worldOctree.fromGraphNode( gltf.scene );
+
+					gltf.scene.traverse( child => {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+							child.material = material;
+
+						}
+
+					} );
+
+					modelReady = true;
+
+					const gui = new GUI( { width: 200 } );
+					gui.add( { debug: false }, 'debug' ).onChange( showHelper );
+				
+				});
+
+			}
+
+			function showHelper ( b ) {
+
+				if(b){
+					if( !helper ) {
+						helper = new OctreeHelper( worldOctree );
+						scene.add( helper );
+					} 
+				} else {
+					if( helper ) {
+						scene.remove( helper );
+						helper.dispose();
+						helper = null
+					}
+				}
+
+			}
+
+			function onTexture( txt, material, target, repeat=false ) {
+
+				if( target.search('ormalMap' ) !== -1 ) txt.colorSpace = THREE.LinearSRGBColorSpace;
+				if( repeat ){ 
+					txt.repeat.fromArray( repeat );
+					txt.wrapS = txt.wrapT = THREE.RepeatWrapping; 
+				} 
+				txt.flipY = false;
+				material[target] = txt;
+				material.needsUpdate = true;
+				
+			}
+
+			function resize() {
+
+				if( !needResize ) return;
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
-
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				needResize = false;
 
 			}
 
@@ -450,67 +516,6 @@
 
 			}
 
-			function loadMap(){
-
-				ktx2loader.load( `./textures/compressed/redgrid.ktx2`, ( texture ) => {
-
-
-					texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-					texture.flipY = false;
-
-					let material = new THREE.MeshStandardMaterial({ map:texture })
-
-					//console.info( `format: ${ FORMAT_LABELS[ texture.format ] }` );
-					//console.info( `type: ${ TYPE_LABELS[ texture.type ] }` );
-					//console.info( `colorSpace: ${ texture.colorSpace }` );
-
-					loadModel( material );
-
-				});
-
-			}
-
-			function loadModel( material ){
-
-				const loader = new GLTFLoader().setPath( './models/gltf/' );
-				loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) );
-				
-				loader.load( 'level.glb', ( gltf ) => {
-
-					scene.add( gltf.scene );
-
-					worldOctree.fromGraphNode( gltf.scene );
-
-					gltf.scene.traverse( child => {
-
-						if ( child.isMesh ) {
-
-							child.castShadow = true;
-							child.receiveShadow = true;
-							child.material = material;
-
-						}
-
-					} );
-
-					modelReady = true;
-
-					const helper = new OctreeHelper( worldOctree );
-					helper.visible = false;
-					scene.add( helper );
-
-					const gui = new GUI( { width: 200 } );
-					gui.add( { debug: false }, 'debug' )
-						.onChange( ( value ) => {
-
-							helper.visible = value;
-
-						});
-				
-				} );
-
-			}
-
 			function controls( deltaTime ) {
 
 				// gives a bit of air control
@@ -519,35 +524,35 @@
 				let moving = false;
 				let speedUp = false;
 
-				if ( keyStates[ 'KeyW' ] ) {
+				if ( Key[ 'KeyW' ] ) {
 
 					playerVelocity.add( getForwardVector().multiplyScalar( speedDelta ) );
 					moving = true;
 
 				}
 
-				if ( keyStates[ 'KeyS' ] ) {
+				if ( Key[ 'KeyS' ] ) {
 
 					playerVelocity.add( getForwardVector().multiplyScalar( - speedDelta ) );
 					moving = true;
 
 				}
 
-				if ( keyStates[ 'KeyA' ] ) {
+				if ( Key[ 'KeyA' ] ) {
 
 					playerVelocity.add( getSideVector().multiplyScalar( - speedDelta ) );
 					moving = true;
 
 				}
 
-				if ( keyStates[ 'KeyD' ] ) {
+				if ( Key[ 'KeyD' ] ) {
 
 					playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
 					moving = true;
 
 				}
 
-				if ( keyStates[ 'ShiftLeft' ] ) {
+				if ( Key[ 'ShiftLeft' ] ) {
 
 					speedUp = true;
 
@@ -555,7 +560,7 @@
 
 				if ( playerOnFloor ) {
 
-					if ( keyStates[ 'Space' ] ) {
+					if ( Key[ 'Space' ] ) {
 
 						playerVelocity.y = 15;
 						moving = true;
@@ -620,6 +625,8 @@
 					updateBalls()
 
 				}
+
+				resize();
 
 				renderer.render( scene, camera );
 
