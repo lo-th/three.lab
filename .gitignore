@@ -3,3 +3,4 @@ package.json
 package-lock.json
 prepa
 _dev.sh
+_start.sh

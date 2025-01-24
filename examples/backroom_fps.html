@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js - misc - octree collisions</title>
+		<title>three.js - backroom</title>
 		<meta charset=utf-8 />
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
 		<div id="info">
-			Octree threejs demo - basic collisions with static triangle mesh<br />
-			MOUSE to look around and to throw balls<br/>
-			WASD to move and SPACE to jump
+			Backroom threejs demo - MOUSE to look, Click to throw balls<br/>
+			WASD to move and SPACE to jump, SHIFT to run
 		</div>
 		<div id="container"></div>
 
@@ -36,12 +35,11 @@
 
 			import { Octree } from 'three/addons/math/Octree.js';
 			import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
-
 			import { Capsule } from 'three/addons/math/Capsule.js';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			//const clock = new THREE.Clock();
+			import { Vignette } from './3TH/objects/Vignette.js';
 
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x88ccee );
@@ -49,6 +47,10 @@
 
 			const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 1000 );
 			camera.rotation.order = 'YXZ';
+			scene.add(camera);
+
+			const vignette = new Vignette();
+			camera.add( vignette );
 
 			const fillLight1 = new THREE.HemisphereLight( 0x8dc1de, 0x00668d, 1.5 );
 			fillLight1.position.set( 2, 1, 1 );
@@ -83,9 +85,11 @@
 			const ktx2loader = new KTX2Loader().setTranscoderPath( 'jsm/libs/basis/' ).detectSupport( renderer );
 
 			const stats = new Stats();
-			stats.domElement.style.position = 'absolute';
-			stats.domElement.style.top = '0px';
-			container.appendChild( stats.domElement );
+			document.body.appendChild( stats.domElement );
+
+			const gui = new GUI( { width: 200 } );
+			gui.domElement.style.right = '0px';
+			gui.add( { Debug: false }, 'Debug' ).onChange( showHelper );
 
 			const GRAVITY = 30;
 			const MinY = -25;
@@ -157,6 +161,7 @@
 
 			let playerOnFloor = false;
 			let mouseTime = 0;
+			let hub = true;
 
 			const vector1 = new THREE.Vector3();
 			const vector2 = new THREE.Vector3();
@@ -176,23 +181,29 @@
 			document.addEventListener( 'keydown', ( e ) => { Key[ e.code ] = true; } );
 			document.addEventListener( 'keyup', ( e ) => { Key[ e.code ] = false; } );
 
+			document.addEventListener( 'pointerlockchange', ( e ) => {
+
+				hideInterface(document.pointerLockElement);
+
+			});
+
 			container.addEventListener( 'mousedown', ( e ) => {
 
-				if ( document.pointerLockElement === null ) { document.body.requestPointerLock(); }
+				if ( document.pointerLockElement === null ) { document.body.requestPointerLock();  }
 
-			} );
+			});
 
 			document.addEventListener( 'mousedown', ( e ) => {
 
 				if ( document.pointerLockElement !== null ) ballInterval = setInterval( throwBall, 100 );
 				
-			} );
+			});
 
 			document.addEventListener( 'mouseup', ( e ) => {
 
 				if ( document.pointerLockElement !== null ) clearInterval( ballInterval )
 				
-			} );
+			});
 
 			document.addEventListener( 'mousemove', ( e ) => {
 
@@ -203,9 +214,19 @@
 
 				}
 
-			} );
+			});
 
 			window.addEventListener( 'resize', () => { needResize=true; } );
+
+			function hideInterface( b ){
+
+				let display = b ? 'none' : 'block'
+				document.getElementById('info').style.display = display;
+				stats.domElement.style.display = display;
+				gui.domElement.style.display = display;
+				hub = !b;
+
+			}
 
 			function loadModel( material ){
 
@@ -231,15 +252,14 @@
 					} );
 
 					modelReady = true;
-
-					const gui = new GUI( { width: 200 } );
-					gui.add( { debug: false }, 'debug' ).onChange( showHelper );
 				
 				});
 
 			}
 
 			function showHelper ( b ) {
+
+				if( !modelReady ) return 
 
 				if(b){
 					if( !helper ) {
@@ -599,8 +619,6 @@
 				const delta = ( t - lastTime ) / 1000;
 				lastTime = t;
 
-				
-
 				// we look for collisions in substeps to mitigate the risk of
 				// an object traversing another too quickly for detection.
 
@@ -630,7 +648,7 @@
 
 				renderer.render( scene, camera );
 
-				stats.update();
+				if(hub) stats.update();
 
 			}
 
