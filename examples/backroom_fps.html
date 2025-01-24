@@ -8,7 +8,7 @@
 	</head>
 	<body>
 		<div id="info">
-			Backroom threejs demo - MOUSE to look, Click to throw balls<br/>
+			Backroom threejs demo - MOUSE to look, Click to shot, Wheel for distance <br/>
 			WASD to move and SPACE to jump, SHIFT to run
 		</div>
 		<div id="container"></div>
@@ -40,6 +40,9 @@
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 			import { Vignette } from './3TH/objects/Vignette.js';
+			import { CapsuleHelper } from './3TH/helpers/CapsuleHelper.js';
+
+			const clamp = THREE.MathUtils.clamp;
 
 			const scene = new THREE.Scene();
 			scene.background = new THREE.Color( 0x88ccee );
@@ -115,6 +118,7 @@
 			});
 
 			const LevelMaterial = new THREE.MeshStandardMaterial();
+			
 
 			// texture
 
@@ -152,9 +156,21 @@
 
 			}
 
+			// collision engine
+
 			const worldOctree = new Octree();
 
+			// player 
+
+			let useSpherical = true;
+			const playerTarget = new THREE.Vector3();
+			const playerSpherical = new THREE.Spherical( 0.0001, Math.PI*0.5, 0 );
+			//const playerMaterial = new THREE.MeshStandardMaterial({ color:0xff0000, wireframe:true });
+			//const playerGeometry = new THREE.CapsuleGeometry( 0.35, 1 );
+			//const playerMesh = new THREE.Mesh( playerGeometry, playerMaterial );
+			const playerMesh = new CapsuleHelper(  0.35, 1 );
 			const playerCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
+			scene.add( playerMesh );
 
 			const playerVelocity = new THREE.Vector3();
 			const playerDirection = new THREE.Vector3();
@@ -187,32 +203,40 @@
 
 			});
 
-			container.addEventListener( 'mousedown', ( e ) => {
+			container.addEventListener( 'pointerdown', ( e ) => {
 
 				if ( document.pointerLockElement === null ) { document.body.requestPointerLock();  }
 
 			});
 
-			document.addEventListener( 'mousedown', ( e ) => {
+			document.addEventListener( 'pointerdown', ( e ) => {
 
 				if ( document.pointerLockElement !== null ) ballInterval = setInterval( throwBall, 100 );
 				
 			});
 
-			document.addEventListener( 'mouseup', ( e ) => {
+			document.addEventListener( 'pointerup', ( e ) => {
 
 				if ( document.pointerLockElement !== null ) clearInterval( ballInterval )
 				
 			});
 
-			document.addEventListener( 'mousemove', ( e ) => {
+			document.addEventListener( 'pointermove', ( e ) => {
 
 				if ( document.pointerLockElement === document.body ) {
 
-					camera.rotation.y -= e.movementX / 500;
-					camera.rotation.x -= e.movementY / 500;
-
+						playerSpherical.phi -= e.movementY / 500;
+						playerSpherical.theta -= e.movementX / 500;
+						playerSpherical.phi = clamp(playerSpherical.phi, 0.0001, Math.PI );
+					
 				}
+
+			});
+
+			document.addEventListener( 'wheel', ( e ) => {
+
+				playerSpherical.radius += e.deltaY * 0.001;
+				playerSpherical.radius = clamp( playerSpherical.radius, 0.0001, 4 );
 
 			});
 
@@ -365,7 +389,12 @@
 
 				playerCollisions();
 
-				camera.position.copy( playerCollider.end );
+				playerTarget.copy( playerCollider.end );
+				camera.position.setFromSpherical( playerSpherical ).add( playerTarget );
+				camera.lookAt( playerTarget );
+
+				playerMesh.rotation.y = playerSpherical.theta;
+				playerMesh.position.copy(playerCollider.end);
 
 			}
 
