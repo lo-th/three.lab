@@ -218,6 +218,7 @@
 
 				var t = new TWEEN.Tween( tmp )
 				.to( tmp2, 4000 )
+				.easing( TWEEN.Easing.Quadratic.Out )
 				.onUpdate( function( n ) { 
 				   sph.set( n.distance, n.phi, n.theta );
 				   camera.position.setFromSpherical( sph ).add( target )
