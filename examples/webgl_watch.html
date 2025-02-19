@@ -20,7 +20,8 @@
 			{
 				"imports": {
 					"three": "../build/three.module.js",
-					"three/addons/": "./jsm/"
+					"three/addons/": "./jsm/",
+					"tween": "./jsm/libs/tween.module.js" 
 				}
 			}
 		</script>
@@ -28,11 +29,14 @@
 		<script type="module">
 
 			import * as THREE from 'three';
+			import * as TWEEN from 'tween'
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+			//import * as TWEEN from 'three/addons/libs/tween.module.js';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
@@ -70,7 +74,7 @@
 				document.body.appendChild( container );
 
 				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.1, 20 );
-				camera.position.set( - 0.8, 0.5, 0.8 );
+				camera.position.set(  0.8, 0.5, -0.8 );
 
 				scene = new THREE.Scene();
 
@@ -188,7 +192,38 @@
 
 				window.addEventListener( 'resize', onWindowResize );
 
+				moveCam()
+
 				//initPostProcess()
+
+			}
+
+			function moveCam(){
+
+				controls.enabled = false;
+				const sph = new THREE.Spherical();
+				const target = controls.target;
+				let tmp = {
+				    distance:controls.getDistance(),
+				    phi:controls.getPolarAngle(),
+				    theta: controls.getAzimuthalAngle()
+				}
+
+				let tmp2 = {
+					distance:controls.getDistance(),
+				    phi:controls.getPolarAngle(),
+				    theta: -Math.PI*0.25
+				}
+
+				var t = new TWEEN.Tween( tmp )
+				.to( tmp2, 4000 )
+				.onUpdate( function( n ) { 
+				   sph.set( n.distance, n.phi, n.theta );
+				   camera.position.setFromSpherical( sph ).add( target )
+				   camera.lookAt( target )
+				})
+				.onComplete( function() { controls.enabled = true; } )
+				.start();
 
 			}
 
@@ -320,6 +355,8 @@
 
 				requestAnimationFrame( render );
 				controls.update();
+
+				TWEEN.update();
 				
 				if( composer ) composer.render();
 				else renderer.render( scene, camera );

@@ -41,6 +41,7 @@
 
 			import { Vignette } from './3TH/objects/Vignette.js';
 			import { CapsuleHelper } from './3TH/helpers/CapsuleHelper.js';
+			import { RayHelper } from './3TH/helpers/RayHelper.js';
 
 			const clamp = THREE.MathUtils.clamp;
 
@@ -159,12 +160,19 @@
 			// collision engine
 
 			const worldOctree = new Octree();
+			let level = null;
 
 			// player 
 
 			let useSpherical = true;
 			const playerTarget = new THREE.Vector3();
 			const playerSpherical = new THREE.Spherical( 0.0001, Math.PI*0.5, 0 );
+			const playerRaycaster = new THREE.Raycaster();
+			playerRaycaster.ray.max = 0.35 * 2; 
+			playerRaycaster.ray.direction.set( 0, -1, 0 );
+
+			const playerRaycasterHelper = new RayHelper( playerRaycaster );
+			scene.add( playerRaycasterHelper );
 			//const playerMaterial = new THREE.MeshStandardMaterial({ color:0xff0000, wireframe:true });
 			//const playerGeometry = new THREE.CapsuleGeometry( 0.35, 1 );
 			//const playerMesh = new THREE.Mesh( playerGeometry, playerMaterial );
@@ -257,19 +265,24 @@
 				const loader = new GLTFLoader().setPath( './models/gltf/' );
 				loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) );
 				
-				loader.load( 'level.glb', ( gltf ) => {
+				loader.load( 'map.glb', ( gltf ) => {
 
 					scene.add( gltf.scene );
 
 					worldOctree.fromGraphNode( gltf.scene );
 
+					level = gltf.scene
+
 					gltf.scene.traverse( child => {
 
 						if ( child.isMesh ) {
 
+							child.material.vertexColor = false
+							child.material.shadowSide = THREE.DoubleSide
+
 							child.castShadow = true;
 							child.receiveShadow = true;
-							child.material = material;
+							//child.material = material;
 
 						}
 
@@ -394,7 +407,26 @@
 				camera.lookAt( playerTarget );
 
 				playerMesh.rotation.y = playerSpherical.theta;
-				playerMesh.position.copy(playerCollider.end);
+				//playerMesh.position.copy( playerCollider.end );
+				//p = playerCollider.start.copy()
+				playerMesh.position.copy( playerCollider.start );
+				playerMesh.position.y += 0.35;
+
+				// cast bottom ray
+
+				playerRaycaster.ray.origin.copy( playerCollider.start )
+				const intersects = playerRaycaster.intersectObject( level );
+				if ( intersects.length > 0 && intersects[ 0 ].distance < playerRaycaster.ray.max ) {
+					
+					playerRaycaster.ray.hit = intersects[ 0 ];
+					/*playerRaycaster.ray.distance = intersects[ 0 ].distance;
+					playerRaycaster.ray.normal = intersects[ 0 ].face.normal;
+					playerRaycaster.ray.point = intersects[ 0 ].point;
+					playerRaycaster.ray.name = intersects[ 0 ].object.name;*/
+
+				} else {
+					playerRaycaster.ray.hit = false;
+				}
 
 			}
 
@@ -432,57 +464,16 @@
 
 			}
 
-			function spheresCollisions() {
+			function updateSpheres( deltaTime ) {
 
 				const length = spheres.length;
-				let i = length;
+				let i = length, sphere;
 
 				while(i--){
 
-					const s1 = spheres[ i ];
+					sphere = spheres[i];
 
-					if( s1.collider.center.y <= MinY ) continue;
-
-					for ( let j = i + 1; j < length; j ++ ) {
-
-						const s2 = spheres[ j ];
-
-						if( s2.collider.center.y <= MinY ) continue;
-
-						const d2 = s1.collider.center.distanceToSquared( s2.collider.center );
-						const r = s1.collider.radius + s2.collider.radius;
-						const r2 = r * r;
-
-						if ( d2 < r2 ) {
-
-							const normal = vector1.subVectors( s1.collider.center, s2.collider.center ).normalize();
-							const v1 = vector2.copy( normal ).multiplyScalar( normal.dot( s1.velocity ) );
-							const v2 = vector3.copy( normal ).multiplyScalar( normal.dot( s2.velocity ) );
-
-							s1.velocity.add( v2 ).sub( v1 );
-							s2.velocity.add( v1 ).sub( v2 );
-
-							const d = ( r - Math.sqrt( d2 ) ) / 2;
-
-							s1.collider.center.addScaledVector( normal, d );
-							s2.collider.center.addScaledVector( normal, - d );
-
-						}
-
-					}
-
-				}
-
-			}
-
-			
-			function updateSpheres( deltaTime ) {
-
-				spheres.forEach( sphere => {
-
-					if( sphere.collider.center.y <= MinY ) return;
-
-					//sphere.lastPosition.copy(sphere.collider.center);
+					if( sphere.collider.center.y <= MinY ) continue;
 
 					sphere.collider.center.addScaledVector( sphere.velocity, deltaTime );
 
@@ -504,15 +495,61 @@
 
 					playerSphereCollision( sphere );
 
-				} );
+				};
 
-				spheresCollisions();
+				// spheresCollisions
+
+				i = length;
+
+				let j, s1, s2, d1, d2, r1, r2, v1, v2, normal;
+
+				while(i--){
+
+					s1 = spheres[ i ];
+
+					if( s1.collider.center.y <= MinY ) continue;
+
+					for ( j = i + 1; j < length; j ++ ) {
+
+						s2 = spheres[ j ];
+
+						if( s2.collider.center.y <= MinY ) continue;
+
+						d2 = s1.collider.center.distanceToSquared( s2.collider.center );
+						r1 = s1.collider.radius + s2.collider.radius;
+						r2 = r1 * r1;
+
+						if ( d2 < r2 ) {
+
+							normal = vector1.subVectors( s1.collider.center, s2.collider.center ).normalize();
+							v1 = vector2.copy( normal ).multiplyScalar( normal.dot( s1.velocity ) );
+							v2 = vector3.copy( normal ).multiplyScalar( normal.dot( s2.velocity ) );
+
+							s1.velocity.add( v2 ).sub( v1 );
+							s2.velocity.add( v1 ).sub( v2 );
+
+							d1 = ( r1 - Math.sqrt( d2 ) ) / 2;
+
+							s1.collider.center.addScaledVector( normal, d1 );
+							s2.collider.center.addScaledVector( normal, - d1 );
+
+						}
+
+					}
+
+				}
 
 			}
+			
 
 			function updateBalls() {
 
-				for ( const sphere of spheres ) {
+				const length = spheres.length;
+				let i = length, sphere;
+
+				while(i--){
+
+					sphere = spheres[i];
 
 					if( sphere.collider.center.y <= MinY && first ) continue;
 
@@ -664,12 +701,11 @@
 
 						updateSpheres( deltaTime );
 
-						teleportPlayerIfOob();
-
 					}
 
-					// update balls instance only one frame !
-					updateBalls()
+					// update balls instance only on last frame !
+					updateBalls();
+					teleportPlayerIfOob();
 
 				}
 

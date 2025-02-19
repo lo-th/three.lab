@@ -18,10 +18,9 @@ class CapsuleHelper extends Object3D {
 		const geometry = new BufferGeometry();
 	    const material = new LineBasicMaterial({ vertexColors: true, toneMapped: false });
 
-		let py = (h*0.5)//-r
+		let py = (h-r)*0.5
 		let side = 12;
 		let dir = r*0.2
-
 
 		let colors = [];
 
@@ -48,7 +47,6 @@ class CapsuleHelper extends Object3D {
 				...c1,...c2,
 			)
 		}
-
 
 		// circle top / bottom
 
@@ -156,8 +154,6 @@ class CapsuleHelper extends Object3D {
 		this.direction.raycast = function(){ return false }
 		this.direction.rotation.y = Math.PI
 		this.add( this.direction );
-
-
 
 	}
 
