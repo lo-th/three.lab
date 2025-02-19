@@ -201,6 +201,7 @@
 			function moveCam(){
 
 				controls.enabled = false;
+				controls.enableDamping = false;
 				const sph = new THREE.Spherical();
 				const target = controls.target;
 				let tmp = {
@@ -222,7 +223,10 @@
 				   camera.position.setFromSpherical( sph ).add( target )
 				   camera.lookAt( target )
 				})
-				.onComplete( function() { controls.enabled = true; } )
+				.onComplete( function() { 
+					controls.enabled = true;
+					controls.enableDamping = true;
+				})
 				.start();
 
 			}
