@@ -8,8 +8,9 @@
 	</head>
 
 	<body>
+		<div id="container"></div>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Rolex - 394 kb
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Rolex + aomap - 610 ko
 		</div>
 
 		<!-- Import maps polyfill -->
@@ -29,14 +30,12 @@
 		<script type="module">
 
 			import * as THREE from 'three';
-			import * as TWEEN from 'tween'
+			import * as TWEEN from 'tween';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-
-			//import * as TWEEN from 'three/addons/libs/tween.module.js';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
@@ -48,7 +47,7 @@
 			import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 			let composer, camera, scene, renderer; 
-			let gui, dirLight, controls, bloomPass, fxaaPass;
+			let gui, dirLight, pointLight, controls, bloomPass, fxaaPass;
 			let ready = false;
 
 			const meshs = {};
@@ -58,10 +57,10 @@
 			const setting = {
 				roughness:0.09,
 				metalness:1.0,
+				opacity:0.4,
 				threshold: 0,
-				strength: 0.16,
-				radius: 0,
-				exposure: 1,
+				strength: 0.08,
+				radius: 0.0,
 				postProcess:false,
 			}
 
@@ -70,11 +69,10 @@
 
 			function init() {
 
-				const container = document.createElement( 'div' );
-				document.body.appendChild( container );
+				const container = document.getElementById( 'container' );
 
 				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.1, 20 );
-				camera.position.set(  0.8, 0.5, -0.8 );
+				camera.position.set(  0.8, 0.5, -1.5 );
 
 				scene = new THREE.Scene();
 
@@ -82,30 +80,21 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
-				renderer.toneMappingExposure = setting.exposure;
+				renderer.toneMappingExposure = 0.7;
 				renderer.shadowMap.enabled = true;
 				renderer.shadowMap.type = THREE.VSMShadowMap;
 				container.appendChild( renderer.domElement )
-
-				const map = new THREE.TextureLoader().load( 'textures/jade.jpg' );
-				map.colorSpace = THREE.SRGBColorSpace;
-				map.wrapS = map.wrapT = THREE.RepeatWrapping;
-				map.repeat.set(20,20);
-				map.flipY = false
-
-				const aoMap = new THREE.TextureLoader().load( 'textures/rolex_ao.jpg' );
-				map.colorSpace = THREE.SRGBColorSpace;
-				aoMap.flipY = false;
 
 				new RGBELoader()
 					.setPath( 'textures/equirectangular/' )
 					.load( 'lobe.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
-
 						scene.background = texture;
 						scene.environment = texture;
-						scene.backgroundBlurriness = 0.3;
+						scene.backgroundBlurriness = 0.5;
+						scene.backgroundIntensity = 1.0;
+						scene.environmentIntensity = 1.5;
 
 						render();
 
@@ -121,9 +110,12 @@
 
 								if ( child.isMesh || child.isGroup ){
 									if ( child.isMesh ){ 
+										child.material.vertexColors = false;
 										materials[child.material.name] = child.material;
-										child.receiveShadow = true;
-										child.castShadow = true;
+										if(child.name!=='glass'){
+											child.receiveShadow = true;
+										    child.castShadow = true;
+										}
 									}
 									meshs[child.name] = child;
 								}
@@ -131,27 +123,13 @@
 
 							scene.add( gltf.scene );
 
-							//console.log(materials)
-							materials.Gold.color.set( 0.944, 0.776, 0.373 );
-
-							materials.Gold.metalness = materials.Silver.metalness = setting.metalness;
-							materials.Gold.roughness = materials.Silver.roughness = setting.roughness;
-
-							materials.Gold.aoMap = aoMap;
-							materials.Silver.aoMap = aoMap;
-
 							meshs.glass.material = new THREE.MeshPhysicalMaterial({
-								color:0x909090,
-								transparent:true, opacity:0.2, 
-								metalness:1.0, roughness:0.0, 
-								envMapIntensity:1.5,
-								iridescence:0.2, 
+								color:0x020205,
+								transparent:true, opacity:setting.opacity, 
+								metalness:0, roughness:0,
+								iridescence:0.3, 
 								clearcoat:1.0,
-							})
-
-							meshs.base.material = new THREE.MeshPhysicalMaterial({
-								color:0x323031, sheenColor:0x2011819, metalness:1.0, roughness:0.8, 
-								sheen:0.8, aoMap:aoMap 
+								blending:THREE.AdditiveBlending
 							})
 
 							ready = true;
@@ -172,63 +150,61 @@
 				controls.dampingFactor = 0.05;
 				controls.update();
 
-				let s = 0.5;
-				dirLight = new THREE.DirectionalLight( 0xFFFFFF, 3 );
+				dirLight = new THREE.DirectionalLight( 0xFFFFFF, 6 );
 				dirLight.position.set( -0.1, 0.6, 0.4 );
 				dirLight.castShadow = true;
-				dirLight.shadow.camera.near = 0.1;
-				dirLight.shadow.camera.far = 2;
-				dirLight.shadow.camera.right = s;
-				dirLight.shadow.camera.left = - s;
-				dirLight.shadow.camera.top	= s;
-				dirLight.shadow.camera.bottom = - s;
-				dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 1024;
-				dirLight.shadow.radius = 8;
-				dirLight.shadow.bias = - 0.0001;
 				scene.add( dirLight );
+				let shadow = dirLight.shadow;
+				shadow.mapSize.width = shadow.mapSize.height = 1024;
+				shadow.radius = 8;
+				shadow.bias = - 0.0005;
+				let shadowCam = shadow.camera, s = 0.5;
+				shadowCam.near = 0.1;
+				shadowCam.far = 2;
+				shadowCam.right = shadowCam.top	= s;
+				shadowCam.left = shadowCam.bottom = -s;
+				// debug shadow
+				//scene.add(  new THREE.CameraHelper(shadowCam) );
+				
 
-				//let g = new THREE.CameraHelper(dirLight.shadow.camera)
-				//scene.add( g );
+				pointLight = new THREE.PointLight( 0x7b8cad, 1, 0, 2 );
+				pointLight.position.set(0.3, -0.2, -0.2)
+				scene.add( pointLight );
+
+				
 
 				window.addEventListener( 'resize', onWindowResize );
 
-				moveCam()
-
-				//initPostProcess()
+				moveCamera()
 
 			}
 
-			function moveCam(){
+			function moveCamera(){
 
 				controls.enabled = false;
 				controls.enableDamping = false;
+
 				const sph = new THREE.Spherical();
 				const target = controls.target;
-				let tmp = {
+				const tmp = {
 				    distance:controls.getDistance(),
 				    phi:controls.getPolarAngle(),
 				    theta: controls.getAzimuthalAngle()
 				}
 
-				let tmp2 = {
-					distance:controls.getDistance(),
-				    phi:controls.getPolarAngle(),
-				    theta: -Math.PI*0.25
-				}
-
-				var t = new TWEEN.Tween( tmp )
-				.to( tmp2, 4000 )
-				.easing( TWEEN.Easing.Quadratic.Out )
-				.onUpdate( function( n ) { 
-				   sph.set( n.distance, n.phi, n.theta );
-				   camera.position.setFromSpherical( sph ).add( target )
-				   camera.lookAt( target )
-				})
-				.onComplete( function() { 
-					controls.enabled = true;
-					controls.enableDamping = true;
-				})
-				.start();
+				const tween = new TWEEN.Tween( tmp )
+					.to( { distance:1, theta: -Math.PI*0.2 }, 6000 )
+					.easing( TWEEN.Easing.Quadratic.Out )
+					.onUpdate( function( n ) { 
+					   sph.set( n.distance, n.phi, n.theta );
+					   camera.position.setFromSpherical( sph ).add( target )
+					   camera.lookAt( target )
+					})
+					.onComplete( function() { 
+						controls.enabled = true;
+						controls.enableDamping = true;
+					})
+					.start();
 
 			}
 
@@ -238,44 +214,37 @@
 
 					if( composer ) return;
 
-					let gl2 = false;//renderer.capabilities.isWebGL2;
-
 					const renderPass = new RenderPass( scene, camera );
-					//renderPass.clearAlpha = 0;
+					const outputPass = new OutputPass();
 
 					bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
 					bloomPass.threshold = setting.threshold;
 					bloomPass.strength = setting.strength;
 					bloomPass.radius = setting.radius;
-					let target;
+					
+					fxaaPass = new ShaderPass( FXAAShader );
+					const pixelRatio = renderer.getPixelRatio();
+					fxaaPass.material.uniforms[ 'resolution' ].value.set( 1 / ( window.innerWidth * pixelRatio ), 1 / ( window.innerHeight * pixelRatio ) );
 
-					if(gl2){
-						target = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight, { samples: 4 } );
-					} else {
-						fxaaPass = new ShaderPass( FXAAShader );
-						const pixelRatio = renderer.getPixelRatio();
-						fxaaPass.material.uniforms[ 'resolution' ].value.set( 1 / ( window.innerWidth * pixelRatio ), 1 / ( window.innerHeight * pixelRatio ) );
-					}
-
-					composer = new EffectComposer( renderer, target );
-					composer.setPixelRatio( 1 ); // ensure pixel ratio is always 1 for performance reasons
+					composer = new EffectComposer( renderer );
+					composer.setPixelRatio( pixelRatio );
 					
 					composer.addPass( renderPass );
 					composer.addPass( bloomPass );
-					composer.addPass( new OutputPass() );
-					if(!gl2){ 
-						composer.addPass( fxaaPass );
-						composer.addPass( fxaaPass );
-					}
-					
+					composer.addPass( fxaaPass );
+					composer.addPass( outputPass );
+					composer.addPass( fxaaPass );
+					composer.addPass( fxaaPass );
+
 				} else {
+
 					if(!composer) return;
 					composer.dispose();
 					composer = null;
 					bloomPass = null;
-				}
+					fxaaPass = null;
 
-				
+				}
 
 			}
 
@@ -284,23 +253,22 @@
 				gui = new GUI();
 				gui.add( setting, 'roughness', 0, 1, 0.01 ).onChange(upMaterial);
 				gui.add( setting, 'metalness', 0, 1, 0.01 ).onChange(upMaterial);
+				gui.add( setting, 'opacity', 0, 1, 0.01 ).onChange(upMaterial);
+
+				//
 
 				gui.add( setting, 'postProcess' ).onChange(postProcess);
-
-				
 				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange(upBloom);
 				gui.add( setting, 'strength', 0, 3, 0.01 ).onChange(upBloom);
 				gui.add( setting, 'radius', 0, 1, 0.01 ).onChange(upBloom);
-				gui.add( setting, 'exposure', 0, 2, 0.01 ).onChange((v)=>{ renderer.toneMappingExposure = Math.pow( v, 4.0 ); });
 				
-			
 			}
 
 			function upMaterial() {
 
-				if(!ready) return;
 				materials.Gold.metalness = materials.Silver.metalness = setting.metalness;
 				materials.Gold.roughness = materials.Silver.roughness = setting.roughness;
+				meshs.glass.material.opacity = setting.opacity;
 			
 			}
 
@@ -310,7 +278,7 @@
 				bloomPass.threshold = setting.threshold;
 				bloomPass.strength = setting.strength;
 				bloomPass.radius = setting.radius;
-			
+
 			}
 
 			function getTime() {
@@ -328,7 +296,6 @@
 				meshs.hour.rotation.y = -hour*30 * torad
 				meshs.minute.rotation.y = -minute * 6 * torad;
 				meshs.second.rotation.y = -second * 6 * torad;
-
 				meshs.mini_03.rotation.y = -day * 12 * torad;
 				meshs.mini_02.rotation.y = -mounth * 30 * torad;
 				meshs.mini_01.rotation.y = -mili * 0.36 * torad;

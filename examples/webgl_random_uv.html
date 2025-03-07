@@ -8,8 +8,9 @@
 	</head>
 
 	<body>
+		<div id="container"></div>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Random UV
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Random UV and Disolve
 		</div>
 
 		<!-- Import maps polyfill -->
@@ -36,15 +37,14 @@
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-			let camera, scene, renderer, gui, material, uniforms;
+			let camera, scene, renderer, dirLight, ground, gui, material, materialIn, uniforms, uniformsIn;
 
 			init();
 			render();
 
 			function init() {
 
-				const container = document.createElement( 'div' );
-				document.body.appendChild( container );
+				const container = document.getElementById( 'container' );
 
 				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 20 );
 				camera.position.set( - 0.8, 0.6, 1.5 );
@@ -55,18 +55,45 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
-				renderer.toneMappingExposure = 1;
-				container.appendChild( renderer.domElement )
+				renderer.toneMappingExposure = 0.7;
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.VSMShadowMap;
+				container.appendChild( renderer.domElement );
+
+				dirLight = new THREE.DirectionalLight( 0xFFFFFF, 3 );
+				dirLight.position.set( -0.5, 1, 0.8 );
+				dirLight.castShadow = true;
+				scene.add( dirLight );
+				let shadow = dirLight.shadow;
+				shadow.mapSize.width = shadow.mapSize.height = 1024;
+				shadow.radius = 16;
+				shadow.bias = - 0.0005;
+				let shadowCam = shadow.camera, s = 2;
+				shadowCam.near = 0.5;
+				shadowCam.far = 3;
+				shadowCam.right = shadowCam.top	= s;
+				shadowCam.left = shadowCam.bottom = -s;
+				// debug shadow
+				//scene.add( new THREE.CameraHelper(shadowCam) );
+
+				// add ground plane
+				let plane = new THREE.PlaneGeometry( 2, 2 );
+				plane.rotateX( -Math.PI*0.5 );
+				ground = new THREE.Mesh( plane, new THREE.ShadowMaterial({opacity:0.5}) )
+				ground.receiveShadow = true;
+				ground.position.z = -0.5
+				scene.add( ground );
+
+
 
 				const map = new THREE.TextureLoader().load( 'textures/jade.jpg' );
 				map.colorSpace = THREE.SRGBColorSpace;
 				map.wrapS = map.wrapT = THREE.RepeatWrapping;
 				map.repeat.set(20,20);
-				map.flipY = false
+				map.flipY = false;
 
-				const aoMap = new THREE.TextureLoader().load( 'textures/shaderBall.jpg' );
-				map.colorSpace = THREE.SRGBColorSpace;
-				aoMap.flipY = false
+				const disolveMap = new THREE.TextureLoader().load( 'textures/shaderball_ds.jpg' );
+				disolveMap.flipY = false;
 
 				const noise = new THREE.TextureLoader().load( 'textures/noise.png' );
 
@@ -78,7 +105,9 @@
 
 						scene.background = texture;
 						scene.environment = texture;
-						scene.backgroundBlurriness = 0.03;
+						scene.backgroundBlurriness = 0.5;
+						scene.backgroundIntensity = 1.0;
+						scene.environmentIntensity = 1.5;
 
 						render();
 
@@ -86,18 +115,34 @@
 
 						const loader = new GLTFLoader().setPath( 'models/gltf/' );
 						loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) )
-						loader.load( 'ShaderBall2.glb', function ( gltf ) {
+						loader.load( 'ShaderBall.glb', function ( gltf ) {
 
 							const shaderBall = gltf.scene.children[0];
-							scene.add( shaderBall );
 
-							material = shaderBall.material;
+							// shaderBall is a groop with 3 children : base, inside and logo
+							// ao map is include in model
+
+							let i = shaderBall.children.length, n = 0;
+
+							while(i--){
+								shaderBall.children[i].receiveShadow = true;
+								shaderBall.children[i].castShadow = true;
+								shaderBall.children[i].renderOrder = n++
+							}
+
+							material = shaderBall.children[0].material;
 							material.map = map;
-							material.aoMap = aoMap;
+							material.alphaMap = disolveMap;
+							material.transparent = true;
 
-							shaderBall.children[0].material.aoMap = aoMap;
+							materialIn = shaderBall.children[1].material;
+							materialIn.alphaMap = disolveMap;
+							materialIn.transparent = true;
 
 							material.onBeforeCompile = function ( shader ) {
+
+								shader.uniforms['disolve'] = { value: 0 };
+								shader.uniforms['threshold'] = { value: 0.2 };
 
 								shader.uniforms['noiseMap'] = { value: noise };
 								shader.uniforms['enableRandom'] = { value: 1 };
@@ -108,9 +153,27 @@
 								shader.fragmentShader = shader.fragmentShader.replace( '#include <clipping_planes_pars_fragment>', '#include <clipping_planes_pars_fragment>' + randomUV );
 								shader.fragmentShader = shader.fragmentShader.replace( '#include <map_fragment>', mapRemplace );
 
+								// for disolve
+								shader.fragmentShader = shader.fragmentShader.replace( '#include <alphamap_pars_fragment>', alphamap_pars_fragment );
+								shader.fragmentShader = shader.fragmentShader.replace( '#include <alphamap_fragment>', alphamap_fragment );
+
 								uniforms = shader.uniforms;
 
 							}
+
+							materialIn.onBeforeCompile = function ( shader ) {
+
+								shader.uniforms['disolve'] = { value: 0 };
+								shader.uniforms['threshold'] = { value: 0.2 };
+								// for disolve
+								shader.fragmentShader = shader.fragmentShader.replace( '#include <alphamap_pars_fragment>', alphamap_pars_fragment );
+								shader.fragmentShader = shader.fragmentShader.replace( '#include <alphamap_fragment>', alphamap_fragment );
+
+								uniformsIn = shader.uniforms;
+
+							}
+
+							scene.add( shaderBall );
 
 							render();
 
@@ -126,7 +189,7 @@
 				controls.addEventListener( 'change', render ); // use if there is no animation loop
 				controls.minDistance = 0.3;
 				controls.maxDistance = 10;
-				controls.target.set( 0, 0.455, 0 );
+				controls.target.set( 0, 0.4, 0 );
 				controls.update();
 
 				window.addEventListener( 'resize', onWindowResize );
@@ -149,11 +212,20 @@
 					get 'DebugNoise'() { return uniforms.debugNoise.value ? true : false; },
 					set 'DebugNoise'( v ) {  uniforms.debugNoise.value = v ? 1 : 0; render(); },
 
+					// disolve
+					get 'disolve'() { return uniforms.disolve.value; },
+					set 'disolve'( v ) {  uniforms.disolve.value = v; uniformsIn.disolve.value = v; ground.material.opacity = (1-v)*0.5; render(); },
+
+					get 'threshold'() { return uniforms.threshold.value; },
+					set 'threshold'( v ) {  uniforms.threshold.value = v; uniformsIn.threshold.value = v; render(); },
+
 				}
 
 				gui = new GUI();
 				gui.add( material, 'roughness', 0, 1, 0.01 ).onChange(render);
 				gui.add( material, 'metalness', 0, 1, 0.01 ).onChange(render);
+				gui.add( setting, 'disolve', 0, 1, 0.01 ).onChange(render);
+				gui.add( setting, 'threshold', 0, 1, 0.01 ).onChange(render);
 				gui.add( setting, 'Enabled' );
 				gui.add( setting, 'UseNoiseMap' );
 				gui.add( setting, 'SuslikMethod' );
@@ -165,7 +237,6 @@
 
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
-
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
 				render();
@@ -250,6 +321,23 @@
 				if( enableRandom == 1.0 ) diffuseColor *= textureNoTile( map, vMapUv );
 				else diffuseColor *= texture2D( map, vMapUv );
 
+			#endif
+			`
+
+			const alphamap_pars_fragment = `
+			#ifdef USE_ALPHAMAP
+				uniform sampler2D alphaMap;
+				uniform float disolve;
+				uniform float threshold;
+			#endif
+			`;
+
+			const alphamap_fragment = `
+			#ifdef USE_ALPHAMAP
+			    float vv = texture2D( alphaMap, vAlphaMapUv ).g;
+			    float r = disolve * (1.0 + threshold * 2.0) - threshold;
+			    float mixf = clamp((vv - r)*(1.0/threshold), 0.0, 1.0);
+				diffuseColor.a = mixf;
 			#endif
 			`
 
