@@ -21,10 +21,10 @@ export class Vignette extends Mesh {
 
             uniforms: {
 
-                color: { value: new Color( 0.01, 0.01, 0.01 ) },
+                color: { value: new Color( 0, 0, 0 ) },
                 darkness: { value: 1 },
-                offset: { value: 1.05  },
-                grain: { value: 0.1  }
+                offset: { value: 1.15  },
+                grain: { value: 0.0  }
                 
             },
 
@@ -65,6 +65,7 @@ export class Vignette extends Mesh {
             transparent:true,
             depthWrite:false,
             depthTest:false,
+            dithering:true,
             //toneMapped:false,
 
         });
