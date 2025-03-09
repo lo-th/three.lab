@@ -251,7 +251,7 @@
 
 			}
 
-			const randomUV = `
+			const randomUV = /* glsl */ `
 
 			uniform sampler2D noiseMap;
 			uniform float enableRandom;
@@ -315,7 +315,7 @@
 
 			}`
 
-			const mapRemplace = `
+			const mapRemplace = /* glsl */ `
 			#ifdef USE_MAP
 
 				if( enableRandom == 1.0 ) diffuseColor *= textureNoTile( map, vMapUv );
@@ -324,7 +324,7 @@
 			#endif
 			`
 
-			const alphamap_pars_fragment = `
+			const alphamap_pars_fragment = /* glsl */ `
 			#ifdef USE_ALPHAMAP
 				uniform sampler2D alphaMap;
 				uniform float disolve;
@@ -332,7 +332,7 @@
 			#endif
 			`;
 
-			const alphamap_fragment = `
+			const alphamap_fragment = /* glsl */ `
 			#ifdef USE_ALPHAMAP
 			    float vv = texture2D( alphaMap, vAlphaMapUv ).g;
 			    float r = disolve * (1.0 + threshold * 2.0) - threshold;

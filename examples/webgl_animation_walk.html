@@ -74,7 +74,6 @@
 			};
 
 
-
 			init();
 
 			function init() {
@@ -120,6 +119,8 @@
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = 0.5;
 				renderer.shadowMap.enabled = true;
 				container.appendChild( renderer.domElement );
 
@@ -141,10 +142,11 @@
 
 				new RGBELoader()
 					.setPath( 'textures/equirectangular/' )
-					.load( 'alien.hdr', function ( texture ) {
+					.load( 'lobe.hdr', function ( texture ) {
 
 						texture.mapping = THREE.EquirectangularReflectionMapping;
 						scene.environment = texture;
+						scene.environmentIntensity = 1.5;
 
 						loadModel();
 						addFloor();
@@ -156,7 +158,7 @@
 			function addFloor() {
 
 				let size = 50;
-				let repeat = 25;
+				let repeat = 16;
 
 				const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
@@ -171,7 +173,7 @@
 				floorN.wrapS = floorN.wrapT = THREE.RepeatWrapping;
 				floorN.anisotropy = maxAnisotropy;
 
-				let mat = new THREE.MeshStandardMaterial( { map:floorT, normalMap:floorN, normalScale:new THREE.Vector2(-1,-1), color: 0x404040, depthWrite: false, roughness:0.85 } )
+				let mat = new THREE.MeshStandardMaterial( { map:floorT, normalMap:floorN, normalScale:new THREE.Vector2(0.5,0.5), color: 0x404040, depthWrite: false, roughness:0.85 } )
 
 				let g = new THREE.PlaneGeometry( size, size, 50, 50 );
 				g.rotateX( -PI90 );
@@ -182,13 +184,12 @@
 
 				controls.floorDecale = (size / repeat) * 4;
 
-
 				const bulbGeometry = new THREE.SphereGeometry( 0.05, 16, 8 );
-				let bulbLight = new THREE.PointLight( 0xffee88, 1, 100, 2 );
+				let bulbLight = new THREE.PointLight( 0xffee88, 2, 500, 2 );
 
 				let bulbMat = new THREE.MeshStandardMaterial( { emissive: 0xffffee, emissiveIntensity: 1, color: 0x000000 } );
 				bulbLight.add( new THREE.Mesh( bulbGeometry, bulbMat ) );
-				bulbLight.position.set( 1, 1, -3 );
+				bulbLight.position.set( 1, 0.1, -3 );
 				bulbLight.castShadow = true;
 				floor.add( bulbLight );
 
@@ -286,8 +287,6 @@
 		        	const current = actions[play];
 		            const old = actions[controls.current];
 		            controls.current = play;
-
-		            
 
 		            if( settings.fixe_transition ){
 		            	current.reset()
