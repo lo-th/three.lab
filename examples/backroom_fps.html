@@ -177,6 +177,7 @@
 			//const playerGeometry = new THREE.CapsuleGeometry( 0.35, 1 );
 			//const playerMesh = new THREE.Mesh( playerGeometry, playerMaterial );
 			const playerMesh = new CapsuleHelper(  0.35, 1 );
+			playerMesh.visible = false;
 			const playerCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
 			scene.add( playerMesh );
 
@@ -245,6 +246,7 @@
 
 				playerSpherical.radius += e.deltaY * 0.001;
 				playerSpherical.radius = clamp( playerSpherical.radius, 0.0001, 4 );
+				playerMesh.visible = playerSpherical.radius > 1;
 
 			});
 
@@ -265,7 +267,7 @@
 				const loader = new GLTFLoader().setPath( './models/gltf/' );
 				loader.setDRACOLoader( new DRACOLoader().setDecoderPath( 'jsm/libs/draco/gltf/' ) );
 				
-				loader.load( 'map.glb', ( gltf ) => {
+				loader.load( 'collision-world.glb', ( gltf ) => {
 
 					scene.add( gltf.scene );
 
@@ -277,12 +279,12 @@
 
 						if ( child.isMesh ) {
 
-							child.material.vertexColor = false
-							child.material.shadowSide = THREE.DoubleSide
+							//child.material.vertexColor = false
+							//child.material.shadowSide = THREE.DoubleSide
+							child.material = material;
 
 							child.castShadow = true;
 							child.receiveShadow = true;
-							//child.material = material;
 
 						}
 
