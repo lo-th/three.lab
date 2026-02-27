@@ -5,6 +5,7 @@ import { nodeObject, Fn, uv, uniform, vec2, vec3, sin, cos, add, vec4, screenSiz
  * Post processing node for creating dot-screen effect.
  *
  * @augments TempNode
+ * @three_import import { dotScreen } from 'three/addons/tsl/display/DotScreenNode.js';
  */
 class DotScreenNode extends TempNode {
 
@@ -100,4 +101,4 @@ export default DotScreenNode;
  * @param {number} [scale=1] - The scale of the effect. A higher value means smaller dots.
  * @returns {DotScreenNode}
  */
-export const dotScreen = ( node, angle, scale ) => nodeObject( new DotScreenNode( nodeObject( node ), angle, scale ) );
+export const dotScreen = ( node, angle, scale ) => new DotScreenNode( nodeObject( node ), angle, scale );

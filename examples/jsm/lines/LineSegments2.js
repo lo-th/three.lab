@@ -10,8 +10,8 @@ import {
 	Vector3,
 	Vector4
 } from 'three';
-import { LineSegmentsGeometry } from '../lines/LineSegmentsGeometry.js';
-import { LineMaterial } from '../lines/LineMaterial.js';
+import { LineSegmentsGeometry } from './LineSegmentsGeometry.js';
+import { LineMaterial } from './LineMaterial.js';
 
 const _viewport = new Vector4();
 
@@ -246,6 +246,7 @@ function raycastScreenSpace( lineSegments, camera, intersects ) {
  * ```
  *
  * @augments Mesh
+ * @three_import import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
  */
 class LineSegments2 extends Mesh {
 

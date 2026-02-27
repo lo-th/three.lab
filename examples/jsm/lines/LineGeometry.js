@@ -1,4 +1,4 @@
-import { LineSegmentsGeometry } from '../lines/LineSegmentsGeometry.js';
+import { LineSegmentsGeometry } from './LineSegmentsGeometry.js';
 
 /**
  * A chain of vertices, forming a polyline.
@@ -17,6 +17,7 @@ import { LineSegmentsGeometry } from '../lines/LineSegmentsGeometry.js';
  * ```
  *
  * @augments LineSegmentsGeometry
+ * @three_import import { LineLineGeometry2 } from 'three/addons/lines/LineGeometry.js';
  */
 class LineGeometry extends LineSegmentsGeometry {
 
@@ -43,7 +44,7 @@ class LineGeometry extends LineSegmentsGeometry {
 	/**
 	 * Sets the given line positions for this geometry.
 	 *
-	 * @param {Float32|Array} array - The position data to set.
+	 * @param {Float32Array|Array<number>} array - The position data to set.
 	 * @return {LineGeometry} A reference to this geometry.
 	 */
 	setPositions( array ) {
@@ -74,7 +75,7 @@ class LineGeometry extends LineSegmentsGeometry {
 	/**
 	 * Sets the given line colors for this geometry.
 	 *
-	 * @param {Float32|Array} array - The position data to set.
+	 * @param {Float32Array|Array<number>} array - The position data to set.
 	 * @return {LineGeometry} A reference to this geometry.
 	 */
 	setColors( array ) {

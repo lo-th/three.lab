@@ -12,20 +12,20 @@ let _rendererState;
 /**
  * Post processing node for creating a bloom effect.
  * ```js
- * const postProcessing = new THREE.PostProcessing( renderer );
+ * const renderPipeline = new THREE.RenderPipeline( renderer );
  *
  * const scenePass = pass( scene, camera );
  * const scenePassColor = scenePass.getTextureNode( 'output' );
  *
  * const bloomPass = bloom( scenePassColor );
  *
- * postProcessing.outputNode = scenePassColor.add( bloomPass );
+ * renderPipeline.outputNode = scenePassColor.add( bloomPass );
  * ```
  * By default, the node affects the entire image. For a selective bloom,
  * use the `emissive` material property to control which objects should
  * contribute to bloom or not. This can be achieved via MRT.
  * ```js
- * const postProcessing = new THREE.PostProcessing( renderer );
+ * const renderPipeline = new THREE.RenderPipeline( renderer );
  *
  * const scenePass = pass( scene, camera );
  * scenePass.setMRT( mrt( {
@@ -37,9 +37,10 @@ let _rendererState;
  * const emissivePass = scenePass.getTextureNode( 'emissive' );
  *
  * const bloomPass = bloom( emissivePass );
- * postProcessing.outputNode = scenePassColor.add( bloomPass );
+ * renderPipeline.outputNode = scenePassColor.add( bloomPass );
  * ```
  * @augments TempNode
+ * @three_import import { bloom } from 'three/addons/tsl/display/BloomNode.js';
  */
 class BloomNode extends TempNode {
 
@@ -76,7 +77,7 @@ class BloomNode extends TempNode {
 		this.strength = uniform( strength );
 
 		/**
-		 * The radius of the bloom.
+		 * The radius of the bloom. Must be in the range `[0,1]`.
 		 *
 		 * @type {UniformNode<float>}
 		 */
@@ -299,6 +300,7 @@ class BloomNode extends TempNode {
 
 		renderer.setRenderTarget( this._renderTargetBright );
 		_quadMesh.material = this._highPassFilterMaterial;
+		_quadMesh.name = 'Bloom [ High Pass ]';
 		_quadMesh.render( renderer );
 
 		// 2. Blur all the mips progressively
@@ -312,11 +314,13 @@ class BloomNode extends TempNode {
 			this._separableBlurMaterials[ i ].colorTexture.value = inputRenderTarget.texture;
 			this._separableBlurMaterials[ i ].direction.value = _BlurDirectionX;
 			renderer.setRenderTarget( this._renderTargetsHorizontal[ i ] );
+			_quadMesh.name = `Bloom [ Blur Horizontal - ${ i } ]`;
 			_quadMesh.render( renderer );
 
 			this._separableBlurMaterials[ i ].colorTexture.value = this._renderTargetsHorizontal[ i ].texture;
 			this._separableBlurMaterials[ i ].direction.value = _BlurDirectionY;
 			renderer.setRenderTarget( this._renderTargetsVertical[ i ] );
+			_quadMesh.name = `Bloom [ Blur Vertical - ${ i } ]`;
 			_quadMesh.render( renderer );
 
 			inputRenderTarget = this._renderTargetsVertical[ i ];
@@ -327,6 +331,7 @@ class BloomNode extends TempNode {
 
 		renderer.setRenderTarget( this._renderTargetsHorizontal[ 0 ] );
 		_quadMesh.material = this._compositeMaterial;
+		_quadMesh.name = 'Bloom [ Composite ]';
 		_quadMesh.render( renderer );
 
 		// restore
@@ -363,7 +368,9 @@ class BloomNode extends TempNode {
 
 		// gaussian blur materials
 
-		const kernelSizeArray = [ 3, 5, 7, 9, 11 ];
+		// These sizes have been changed to account for the altered coefficients-calculation to avoid blockiness,
+		// while retaining the same blur-strength. For details see https://github.com/mrdoob/three.js/pull/31528
+		const kernelSizeArray = [ 6, 10, 14, 18, 22 ];
 
 		for ( let i = 0; i < this._nMips; i ++ ) {
 
@@ -436,11 +443,21 @@ class BloomNode extends TempNode {
 
 		this._renderTargetBright.dispose();
 
+		if ( this._highPassFilterMaterial !== null ) this._highPassFilterMaterial.dispose();
+		if ( this._compositeMaterial !== null ) this._compositeMaterial.dispose();
+
+		for ( let i = 0; i < this._separableBlurMaterials.length; i ++ ) {
+
+			this._separableBlurMaterials[ i ].dispose();
+
+		}
+
 	}
 
 	/**
 	 * Create a separable blur material for the given kernel radius.
 	 *
+	 * @private
 	 * @param {NodeBuilder} builder - The current node builder.
 	 * @param {number} kernelRadius - The kernel radius.
 	 * @return {NodeMaterial}
@@ -448,16 +465,17 @@ class BloomNode extends TempNode {
 	_getSeparableBlurMaterial( builder, kernelRadius ) {
 
 		const coefficients = [];
+		const sigma = kernelRadius / 3;
 
 		for ( let i = 0; i < kernelRadius; i ++ ) {
 
-			coefficients.push( 0.39894 * Math.exp( - 0.5 * i * i / ( kernelRadius * kernelRadius ) ) / kernelRadius );
+			coefficients.push( 0.39894 * Math.exp( - 0.5 * i * i / ( sigma * sigma ) ) / sigma );
 
 		}
 
 		//
 
-		const colorTexture = texture();
+		const colorTexture = texture( null );
 		const gaussianCoefficients = uniformArray( coefficients );
 		const invSize = uniform( new Vector2() );
 		const direction = uniform( new Vector2( 0.5, 0.5 ) );
@@ -467,8 +485,7 @@ class BloomNode extends TempNode {
 
 		const separableBlurPass = Fn( () => {
 
-			const weightSum = gaussianCoefficients.element( 0 ).toVar();
-			const diffuseSum = sampleTexel( uvNode ).rgb.mul( weightSum ).toVar();
+			const diffuseSum = sampleTexel( uvNode ).rgb.mul( gaussianCoefficients.element( 0 ) ).toVar();
 
 			Loop( { start: int( 1 ), end: int( kernelRadius ), type: 'int', condition: '<' }, ( { i } ) => {
 
@@ -478,11 +495,10 @@ class BloomNode extends TempNode {
 				const sample1 = sampleTexel( uvNode.add( uvOffset ) ).rgb;
 				const sample2 = sampleTexel( uvNode.sub( uvOffset ) ).rgb;
 				diffuseSum.addAssign( add( sample1, sample2 ).mul( w ) );
-				weightSum.addAssign( float( 2.0 ).mul( w ) );
 
 			} );
 
-			return vec4( diffuseSum.div( weightSum ), 1.0 );
+			return vec4( diffuseSum, 1.0 );
 
 		} );
 
@@ -513,6 +529,6 @@ class BloomNode extends TempNode {
  * @param {number} [threshold=0] - The luminance threshold limits which bright areas contribute to the bloom effect.
  * @returns {BloomNode}
  */
-export const bloom = ( node, strength, radius, threshold ) => nodeObject( new BloomNode( nodeObject( node ), strength, radius, threshold ) );
+export const bloom = ( node, strength, radius, threshold ) => new BloomNode( nodeObject( node ), strength, radius, threshold );
 
 export default BloomNode;

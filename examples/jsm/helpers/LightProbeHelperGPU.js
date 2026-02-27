@@ -2,7 +2,7 @@ import {
 	Mesh,
 	NodeMaterial,
 	SphereGeometry
-} from 'three';
+} from 'three/webgpu';
 import { float, Fn, getShIrradianceAt, normalWorld, uniformArray, uniform, vec4 } from 'three/tsl';
 
 /**
@@ -18,6 +18,7 @@ import { float, Fn, getShIrradianceAt, normalWorld, uniformArray, uniform, vec4 
  *
  * @private
  * @augments Mesh
+ * @three_import import { LightProbeHelper } from 'three/addons/helpers/LightProbeHelperGPU.js';
  */
 class LightProbeHelper extends Mesh {
 

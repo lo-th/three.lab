@@ -1,8 +1,24 @@
 import { TextureLoader } from 'three';
-import { Fn, int, ivec2, textureLoad } from 'three/tsl';
+import { Fn, int, ivec2, textureLoad, screenUV, screenSize, mod, floor, float, vec3 } from 'three/tsl';
+
+/**
+ * @module Bayer
+ * @three_import import { bayer16 } from 'three/addons/tsl/math/Bayer.js';
+ */
 
 let bayer16Texture = null;
 
+/**
+ * This TSL function can be used to sample a Bayer16 texture which is a 16x16 texture with a Bayer Matrix pattern.
+ * It can be used for dithering effects but also as an alternative to blue-noise. When used with Ray Marching
+ * specifically in {@link VolumeNodeMaterial#offsetNode}, it reduces banding problem, thus being able to use
+ * fewer steps without affecting the visuals as much.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec2>} uv - The uv to sample the bayer16 texture.
+ * @return {Node<vec4>} The sampled bayer value.
+ */
 export const bayer16 = Fn( ( [ uv ] ) => {
 
 	if ( bayer16Texture === null ) {
@@ -13,6 +29,45 @@ export const bayer16 = Fn( ( [ uv ] ) => {
 
 	}
 
-	return textureLoad( bayer16Texture, ivec2( uv ).modInt( int( 16 ) ) );
+	return textureLoad( bayer16Texture, ivec2( uv ).mod( int( 16 ) ) );
+
+} );
+
+/**
+ * This TSL function applies Bayer dithering to a color input. It uses a 4x4 Bayer matrix
+ * pattern to add structured noise before color quantization, which helps reduce visible
+ * color banding when limiting color depth.
+ *
+ * @tsl
+ * @function
+ * @param {Node<vec3>} color - The input color to apply dithering to.
+ * @param {Node<float>} [steps=32] - The number of color steps per channel.
+ * @return {Node<vec3>} The dithered color ready for quantization.
+ *
+ * @example
+ * // Apply dithering with posterize
+ * const ditheredColor = bayerDither( inputColor, 32 );
+ * const finalColor = posterize( ditheredColor, 32 );
+ */
+export const bayerDither = Fn( ( [ color, steps = float( 32.0 ) ] ) => {
+
+	const screenPos = screenUV.mul( screenSize );
+	const x = mod( floor( screenPos.x ), float( 4.0 ) );
+	const y = mod( floor( screenPos.y ), float( 4.0 ) );
+
+	// Simplified Bayer matrix approximation
+	const bayer = mod(
+		floor( x.add( 1.0 ) ).mul( floor( y.add( 1.0 ) ) ).mul( 17.0 ),
+		16.0
+	).div( 16.0 ).sub( 0.5 );
+
+	// Apply dither offset before quantization
+	const ditherOffset = bayer.div( steps );
+
+	return vec3(
+		color.r.add( ditherOffset ),
+		color.g.add( ditherOffset ),
+		color.b.add( ditherOffset )
+	);
 
 } );

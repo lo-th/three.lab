@@ -21,6 +21,7 @@ const _tmpQuaternion = new Quaternion();
  * (e.g. focus on a specific target).
  *
  * @augments Controls
+ * @three_import import { FlyControls } from 'three/addons/controls/FlyControls.js';
  */
 class FlyControls extends Controls {
 
@@ -28,7 +29,7 @@ class FlyControls extends Controls {
 	 * Constructs a new controls instance.
 	 *
 	 * @param {Object3D} object - The object that is managed by the controls.
-	 * @param {?HTMLDOMElement} domElement - The HTML element used for event listeners.
+	 * @param {?HTMLElement} domElement - The HTML element used for event listeners.
 	 */
 	constructor( object, domElement = null ) {
 
@@ -89,13 +90,15 @@ class FlyControls extends Controls {
 
 		if ( domElement !== null ) {
 
-			this.connect();
+			this.connect( domElement );
 
 		}
 
 	}
 
-	connect() {
+	connect( element ) {
+
+		super.connect( element );
 
 		window.addEventListener( 'keydown', this._onKeyDown );
 		window.addEventListener( 'keyup', this._onKeyUp );

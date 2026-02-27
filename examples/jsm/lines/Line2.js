@@ -1,6 +1,6 @@
-import { LineSegments2 } from '../lines/LineSegments2.js';
-import { LineGeometry } from '../lines/LineGeometry.js';
-import { LineMaterial } from '../lines/LineMaterial.js';
+import { LineSegments2 } from './LineSegments2.js';
+import { LineGeometry } from './LineGeometry.js';
+import { LineMaterial } from './LineMaterial.js';
 
 /**
  * A polyline drawn between vertices.
@@ -24,6 +24,7 @@ import { LineMaterial } from '../lines/LineMaterial.js';
  * ```
  *
  * @augments LineSegments2
+ * @three_import import { Line2 } from 'three/addons/lines/Line2.js';
  */
 class Line2 extends LineSegments2 {
 

@@ -4,13 +4,15 @@ const inverseProjectionMatrix = new Matrix4();
 
 /**
  * Represents the frustum of a CSM instance.
+ *
+ * @three_import import { CSMFrustum } from 'three/addons/csm/CSMFrustum.js';
  */
 class CSMFrustum {
 
 	/**
 	 * Constructs a new CSM frustum.
 	 *
-	 * @param {CSMFrustum~Data} data - The CSM data.
+	 * @param {CSMFrustum~Data} [data] - The CSM data.
 	 */
 	constructor( data ) {
 

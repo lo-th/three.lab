@@ -112,9 +112,9 @@
 				camera.position.set( 0, 3, 10 );
 
 				scene = new THREE.Scene();
-				scene.fog = new THREE.FogExp2(0, 0)
+				/*scene.fog = new THREE.FogExp2(0, 0)
 				scene.fog.color.setHex( options.fogColor.getHex() );
-				scene.fog.density = options.fogDensity;
+				scene.fog.density = options.fogDensity;*/
 
 				renderer = new THREE.WebGLRenderer( { antialias: true, premultipliedAlpha: false, alpha: false, stencil: false, } );
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -180,6 +180,8 @@
 											if (m.lightMap) m.lightMap.anisotropy = options.anisotropy;
 											if (m.aoMap) m.aoMap.anisotropy = options.anisotropy;
 										}
+
+										
 
 										// convert emmisive to lightmap because exporter can't use lightmap
 										if( m.emissiveMap ){
@@ -318,9 +320,11 @@
 
 			function upMaterial() {
 
+				console.log('up')
+
 				scene.environmentIntensity = options.envMapIntensity
 
-				for( let name in materials ){
+				/*for( let name in materials ){
 					const m = materials[name];
 					const shader = m.userData.shader;
 					for( let o in options ){
@@ -334,7 +338,7 @@
 						}
 					}
 
-				}
+				}*/
 			
 			}
 

@@ -14,6 +14,7 @@ let _rendererState;
  * - {@link https://john-chapman.github.io/2017/11/05/pseudo-lens-flare.html}.
  *
  * @augments TempNode
+ * @three_import import { lensflare } from 'three/addons/tsl/display/LensflareNode.js';
  */
 class LensflareNode extends TempNode {
 
@@ -275,4 +276,4 @@ export default LensflareNode;
  * @param {number} [params.downSampleRatio=4] - Defines how downsampling since the effect is usually not rendered at full resolution.
  * @returns {LensflareNode}
  */
-export const lensflare = ( node, params ) => nodeObject( new LensflareNode( convertToTexture( node ), params ) );
+export const lensflare = ( node, params ) => new LensflareNode( convertToTexture( node ), params );

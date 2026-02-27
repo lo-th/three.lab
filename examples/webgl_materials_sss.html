@@ -92,7 +92,7 @@
 			renderer.setPixelRatio( window.devicePixelRatio );
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
-			renderer.toneMappingExposure = 1.0;
+			renderer.toneMappingExposure = 1;
 			renderer.shadowMap.enabled = true;
 			container.appendChild( renderer.domElement );
 
@@ -116,7 +116,9 @@
 				texture.mapping = THREE.EquirectangularReflectionMapping;
 				scene.background = new THREE.Color( 0x808080 )//texture;
 				scene.environment = texture;
-				scene.backgroundBlurriness = 0.1;
+				//scene.backgroundBlurriness = 0.1;
+				//scene.backgroundIntensity = 1.0;
+				scene.environmentIntensity = 1.0;
 				initMaterial();
 
 			});

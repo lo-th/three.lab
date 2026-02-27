@@ -7,16 +7,49 @@ import {
 	Loader,
 	SRGBColorSpace
 } from 'three';
-import * as fflate from '../libs/fflate.module.js';
+import { unzlibSync } from '../libs/fflate.module.js';
 
+/**
+ * A loader for the VTK format.
+ *
+ * This loader only supports the `POLYDATA` dataset format so far. Other formats
+ * (structured points, structured grid, rectilinear grid, unstructured grid, appended)
+ * are not supported.
+ *
+ * ```js
+ * const loader = new VTKLoader();
+ * const geometry = await loader.loadAsync( 'models/vtk/liver.vtk' );
+ * geometry.computeVertexNormals();
+ *
+ * const mesh = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial() );
+ * scene.add( mesh );
+ * ```
+ *
+ * @augments Loader
+ * @three_import import { VTKLoader } from 'three/addons/loaders/VTKLoader.js';
+ */
 class VTKLoader extends Loader {
 
+	/**
+	 * Constructs a new VTK loader.
+	 *
+	 * @param {LoadingManager} [manager] - The loading manager.
+	 */
 	constructor( manager ) {
 
 		super( manager );
 
 	}
 
+	/**
+	 * Starts loading from the given URL and passes the loaded VRML asset
+	 * to the `onLoad()` callback.
+	 *
+	 * @param {string} url - The path/URL of the file to be loaded. This can also be a data URI.
+	 * @param {function(BufferGeometry)} onLoad - Executed when the loading process has been finished.
+	 * @param {onProgressCallback} onProgress - Executed while the loading is in progress.
+	 * @param {onErrorCallback} onError - Executed when errors occur.
+	 */
 	load( url, onLoad, onProgress, onError ) {
 
 		const scope = this;
@@ -52,6 +85,12 @@ class VTKLoader extends Loader {
 
 	}
 
+	/**
+	 * Parses the given VTK data and returns the resulting geometry.
+	 *
+	 * @param {ArrayBuffer} data - The raw VTK data as an array buffer
+	 * @return {BufferGeometry} The parsed geometry.
+	 */
 	parse( data ) {
 
 		function parseASCII( data ) {
@@ -73,8 +112,20 @@ class VTKLoader extends Loader {
 			// pattern for detecting the end of a number sequence
 			const patWord = /^[^\d.\s-]+/;
 
-			// pattern for reading vertices, 3 floats or integers
-			const pat3Floats = /(\-?\d+\.?[\d\-\+e]*)\s+(\-?\d+\.?[\d\-\+e]*)\s+(\-?\d+\.?[\d\-\+e]*)/g;
+			function parseFloats( line ) {
+
+				const result = [];
+				const parts = line.split( /\s+/ );
+
+				for ( let i = 0; i < parts.length; i ++ ) {
+
+					if ( parts[ i ] !== '' ) result.push( parseFloat( parts[ i ] ) );
+
+				}
+
+				return result;
+
+			}
 
 			// pattern for connectivity, an integer followed by any number of ints
 			// the first integer is the number of polygon nodes
@@ -126,14 +177,15 @@ class VTKLoader extends Loader {
 				} else if ( inPointsSection ) {
 
 					// get the vertices
-					while ( ( result = pat3Floats.exec( line ) ) !== null ) {
+					if ( patWord.exec( line ) === null ) {
 
-						if ( patWord.exec( line ) !== null ) break;
+						const values = parseFloats( line );
 
-						const x = parseFloat( result[ 1 ] );
-						const y = parseFloat( result[ 2 ] );
-						const z = parseFloat( result[ 3 ] );
-						positions.push( x, y, z );
+						for ( let k = 0; k + 2 < values.length; k += 3 ) {
+
+							positions.push( values[ k ], values[ k + 1 ], values[ k + 2 ] );
+
+						}
 
 					}
 
@@ -204,17 +256,16 @@ class VTKLoader extends Loader {
 
 						// Get the colors
 
-						while ( ( result = pat3Floats.exec( line ) ) !== null ) {
+						if ( patWord.exec( line ) === null ) {
 
-							if ( patWord.exec( line ) !== null ) break;
+							const values = parseFloats( line );
 
-							const r = parseFloat( result[ 1 ] );
-							const g = parseFloat( result[ 2 ] );
-							const b = parseFloat( result[ 3 ] );
+							for ( let k = 0; k + 2 < values.length; k += 3 ) {
 
-							color.setRGB( r, g, b, SRGBColorSpace );
+								color.setRGB( values[ k ], values[ k + 1 ], values[ k + 2 ], SRGBColorSpace );
+								colors.push( color.r, color.g, color.b );
 
-							colors.push( color.r, color.g, color.b );
+							}
 
 						}
 
@@ -222,14 +273,15 @@ class VTKLoader extends Loader {
 
 						// Get the normal vectors
 
-						while ( ( result = pat3Floats.exec( line ) ) !== null ) {
+						if ( patWord.exec( line ) === null ) {
 
-							if ( patWord.exec( line ) !== null ) break;
+							const values = parseFloats( line );
 
-							const nx = parseFloat( result[ 1 ] );
-							const ny = parseFloat( result[ 2 ] );
-							const nz = parseFloat( result[ 3 ] );
-							normals.push( nx, ny, nz );
+							for ( let k = 0; k + 2 < values.length; k += 3 ) {
+
+								normals.push( values[ k ], values[ k + 1 ], values[ k + 2 ] );
+
+							}
 
 						}
 
@@ -361,7 +413,7 @@ class VTKLoader extends Loader {
 				let index = start;
 				let c = buffer[ index ];
 				const s = [];
-				while ( c !== 10 ) {
+				while ( c !== 10 && index < buffer.length ) {
 
 					s.push( String.fromCharCode( c ) );
 					index ++;
@@ -807,7 +859,7 @@ class VTKLoader extends Loader {
 
 					for ( let i = 0; i < dataOffsets.length - 1; i ++ ) {
 
-						const data = fflate.unzlibSync( byteData.slice( dataOffsets[ i ], dataOffsets[ i + 1 ] ) );
+						const data = unzlibSync( byteData.slice( dataOffsets[ i ], dataOffsets[ i + 1 ] ) );
 						content = data.buffer;
 
 						if ( ele.attributes.type === 'Float32' ) {

@@ -5,7 +5,7 @@ import { Color, ColorManagement, SRGBColorSpace } from 'three';
 /**
  * An exporter to compress geometry with the Draco library.
  *
- * [Draco]{@link https://google.github.io/draco/} is an open source library for compressing and
+ * [Draco](https://google.github.io/draco/) is an open source library for compressing and
  * decompressing 3D meshes and point clouds. Compressed geometry can be significantly smaller,
  * at the cost of additional decoding time on the client device.
  *
@@ -13,12 +13,14 @@ import { Color, ColorManagement, SRGBColorSpace } from 'three';
  * normals, colors, and other attributes. Draco files *do not* contain materials,
  * textures, animation, or node hierarchies – to use these features, embed Draco geometry
  * inside of a glTF file. A normal glTF file can be converted to a Draco-compressed glTF file
- * using [glTF-Pipeline]{@link https://github.com/AnalyticalGraphicsInc/gltf-pipeline}.
+ * using [glTF-Pipeline](https://github.com/AnalyticalGraphicsInc/gltf-pipeline).
  *
  * ```js
  * const exporter = new DRACOExporter();
  * const data = exporter.parse( mesh, options );
  * ```
+ *
+ * @three_import import { DRACOExporter } from 'three/addons/exporters/DRACOExporter.js';
  */
 class DRACOExporter {
 
@@ -27,7 +29,7 @@ class DRACOExporter {
 	 *
 	 * @param {(Mesh|Points)} object - The mesh or point cloud to export.
 	 * @param {DRACOExporter~Options} options - The export options.
-	 * @return {ArrayBuffer} The exported Draco.
+	 * @return {Int8Array} The exported Draco.
 	 */
 	parse( object, options = {} ) {
 
@@ -239,7 +241,7 @@ function createVertexColorSRGBArray( attribute ) {
 
 		_color.fromBufferAttribute( attribute, i );
 
-		ColorManagement.fromWorkingColorSpace( _color, SRGBColorSpace );
+		ColorManagement.workingToColorSpace( _color, SRGBColorSpace );
 
 		array[ i * itemSize ] = _color.r;
 		array[ i * itemSize + 1 ] = _color.g;

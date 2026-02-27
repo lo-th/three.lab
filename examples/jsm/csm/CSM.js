@@ -13,6 +13,7 @@ import { CSMShader } from './CSMShader.js';
 const _cameraToLightMatrix = new Matrix4();
 const _lightSpaceFrustum = new CSMFrustum( { webGL: true } );
 const _center = new Vector3();
+const _origin = new Vector3();
 const _bbox = new Box3();
 const _uniformArray = [];
 const _logArray = [];
@@ -25,6 +26,8 @@ const _up = new Vector3( 0, 1, 0 );
  *
  * This module can only be used with {@link WebGLRenderer}. When using {@link WebGPURenderer},
  * use {@link CSMShadowNode} instead.
+ *
+ * @three_import import { CSM } from 'three/addons/csm/CSM.js';
  */
 export class CSM {
 
@@ -365,7 +368,7 @@ export class CSM {
 
 		// for each frustum we need to find its min-max box aligned with the light orientation
 		// the position in _lightOrientationMatrix does not matter, as we transform there and back
-		_lightOrientationMatrix.lookAt( new Vector3(), this.lightDirection, _up );
+		_lightOrientationMatrix.lookAt( _origin, this.lightDirection, _up );
 		_lightOrientationMatrixInverse.copy( _lightOrientationMatrix ).invert();
 
 		for ( let i = 0; i < frustums.length; i ++ ) {

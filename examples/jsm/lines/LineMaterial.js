@@ -311,6 +311,9 @@ ShaderLib[ 'line' ] = {
 
 		void main() {
 
+			float alpha = opacity;
+			vec4 diffuseColor = vec4( diffuse, alpha );
+
 			#include <clipping_planes_fragment>
 
 			#ifdef USE_DASH
@@ -320,8 +323,6 @@ ShaderLib[ 'line' ] = {
 				if ( mod( vLineDistance + dashOffset, dashSize + gapSize ) > dashSize ) discard; // todo - FIX
 
 			#endif
-
-			float alpha = opacity;
 
 			#ifdef WORLD_UNITS
 
@@ -387,8 +388,6 @@ ShaderLib[ 'line' ] = {
 
 			#endif
 
-			vec4 diffuseColor = vec4( diffuse, alpha );
-
 			#include <logdepthbuf_fragment>
 			#include <color_fragment>
 
@@ -413,6 +412,7 @@ ShaderLib[ 'line' ] = {
  * use {@link Line2NodeMaterial}.
  *
  * @augments ShaderMaterial
+ * @three_import import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
  */
 class LineMaterial extends ShaderMaterial {
 
@@ -483,6 +483,12 @@ class LineMaterial extends ShaderMaterial {
 	}
 
 	set worldUnits( value ) {
+
+		if ( ( value === true ) !== this.worldUnits ) {
+
+			this.needsUpdate = true;
+
+		}
 
 		if ( value === true ) {
 
@@ -662,7 +668,7 @@ class LineMaterial extends ShaderMaterial {
 	 * Whether to use alphaToCoverage or not. When enabled, this can improve the
 	 * anti-aliasing of line edges when using MSAA.
 	 *
-	 * @type {Vector2}
+	 * @type {boolean}
 	 */
 	get alphaToCoverage() {
 

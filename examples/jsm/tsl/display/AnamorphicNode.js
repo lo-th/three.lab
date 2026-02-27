@@ -9,6 +9,7 @@ let _rendererState;
  * Post processing node for adding an anamorphic flare effect.
  *
  * @augments TempNode
+ * @three_import import { anamorphic } from 'three/addons/tsl/display/AnamorphicNode.js';
  */
 class AnamorphicNode extends TempNode {
 
@@ -22,11 +23,11 @@ class AnamorphicNode extends TempNode {
 	 * Constructs a new anamorphic node.
 	 *
 	 * @param {TextureNode} textureNode - The texture node that represents the input of the effect.
-	 * @param {Node<float>} tresholdNode - The threshold is one option to control the intensity and size of the effect.
+	 * @param {Node<float>} thresholdNode - The threshold is one option to control the intensity and size of the effect.
 	 * @param {Node<float>} scaleNode - Defines the vertical scale of the flares.
 	 * @param {number} samples - More samples result in larger flares and a more expensive runtime behavior.
 	 */
-	constructor( textureNode, tresholdNode, scaleNode, samples ) {
+	constructor( textureNode, thresholdNode, scaleNode, samples ) {
 
 		super( 'vec4' );
 
@@ -42,7 +43,7 @@ class AnamorphicNode extends TempNode {
 		 *
 		 * @type {Node<float>}
 		 */
-		this.tresholdNode = tresholdNode;
+		this.thresholdNode = thresholdNode;
 
 		/**
 		 * Defines the vertical scale of the flares.
@@ -68,9 +69,9 @@ class AnamorphicNode extends TempNode {
 		/**
 		 * The resolution scale.
 		 *
-		 * @type {Vector2}
+		 * @type {number}
 		 */
-		this.resolution = new Vector2( 1, 1 );
+		this.resolutionScale = 1;
 
 		/**
 		 * The internal render target of the effect.
@@ -129,8 +130,8 @@ class AnamorphicNode extends TempNode {
 
 		this._invSize.value.set( 1 / width, 1 / height );
 
-		width = Math.max( Math.round( width * this.resolution.x ), 1 );
-		height = Math.max( Math.round( height * this.resolution.y ), 1 );
+		width = Math.max( Math.round( width * this.resolutionScale ), 1 );
+		height = Math.max( Math.round( height * this.resolutionScale ), 1 );
 
 		this._renderTarget.setSize( width, height );
 
@@ -157,6 +158,7 @@ class AnamorphicNode extends TempNode {
 		const currentTexture = textureNode.value;
 
 		_quadMesh.material = this._material;
+		_quadMesh.name = 'Anamorphic';
 
 		this.setSize( map.image.width, map.image.height );
 
@@ -202,7 +204,7 @@ class AnamorphicNode extends TempNode {
 
 				const uv = vec2( uvNode.x.add( this._invSize.x.mul( i ).mul( this.scaleNode ) ), uvNode.y );
 				const color = sampleTexture( uv );
-				const pass = threshold( color, this.tresholdNode ).mul( softness );
+				const pass = threshold( color, this.thresholdNode ).mul( softness );
 
 				total.addAssign( pass );
 
@@ -239,6 +241,29 @@ class AnamorphicNode extends TempNode {
 
 	}
 
+	/**
+	 * The resolution scale.
+	 *
+	 * @deprecated
+	 * @type {Vector2}
+	 * @default {(1,1)}
+	 */
+	get resolution() {
+
+		console.warn( 'THREE.AnamorphicNode: The "resolution" property has been renamed to "resolutionScale" and is now of type `number`.' ); // @deprecated r180
+
+		return new Vector2( this.resolutionScale, this.resolutionScale );
+
+	}
+
+	set resolution( value ) {
+
+		console.warn( 'THREE.AnamorphicNode: The "resolution" property has been renamed to "resolutionScale" and is now of type `number`.' ); // @deprecated r180
+
+		this.resolutionScale = value.x;
+
+	}
+
 }
 
 /**
@@ -252,6 +277,6 @@ class AnamorphicNode extends TempNode {
  * @param {number} [samples=32] - More samples result in larger flares and a more expensive runtime behavior.
  * @returns {AnamorphicNode}
  */
-export const anamorphic = ( node, threshold = .9, scale = 3, samples = 32 ) => nodeObject( new AnamorphicNode( convertToTexture( node ), nodeObject( threshold ), nodeObject( scale ), samples ) );
+export const anamorphic = ( node, threshold = .9, scale = 3, samples = 32 ) => new AnamorphicNode( convertToTexture( node ), nodeObject( threshold ), nodeObject( scale ), samples );
 
 export default AnamorphicNode;

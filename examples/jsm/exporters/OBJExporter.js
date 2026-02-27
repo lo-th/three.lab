@@ -16,6 +16,8 @@ import {
  * const exporter = new OBJExporter();
  * const data = exporter.parse( scene );
  * ```
+ *
+ * @three_import import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
  */
 class OBJExporter {
 
@@ -248,7 +250,7 @@ class OBJExporter {
 
 						color.fromBufferAttribute( colors, i );
 
-						ColorManagement.fromWorkingColorSpace( color, SRGBColorSpace );
+						ColorManagement.workingToColorSpace( color, SRGBColorSpace );
 
 						output += ' ' + color.r + ' ' + color.g + ' ' + color.b;
 

@@ -1,6 +1,6 @@
-import { Clock, Vector3, Quaternion, Matrix4 } from 'three';
+import { Timer, Vector3, Quaternion, Matrix4 } from 'three';
 
-const JOLT_PATH = 'https://cdn.jsdelivr.net/npm/jolt-physics@0.23.0/dist/jolt-physics.wasm-compat.js';
+const JOLT_PATH = 'https://cdn.jsdelivr.net/npm/jolt-physics@1.0.0/dist/jolt-physics.wasm-compat.js';
 
 const frameRate = 60;
 
@@ -27,6 +27,8 @@ function getShape( geometry ) {
 		return new Jolt.SphereShape( radius, null );
 
 	}
+
+	console.error( 'JoltPhysics: Unsupported geometry type:', geometry.type );
 
 	return null;
 
@@ -57,11 +59,25 @@ function setupCollisionFiltering( settings ) {
 
 }
 
+/**
+ * @classdesc Can be used to include Jolt as a Physics engine into
+ * `three.js` apps. The API can be initialized via:
+ * ```js
+ * const physics = await JoltPhysics();
+ * ```
+ * The component automatically imports Jolt from a CDN so make sure
+ * to use the component with an active Internet connection.
+ *
+ * @name JoltPhysics
+ * @class
+ * @hideconstructor
+ * @three_import import { JoltPhysics } from 'three/addons/physics/JoltPhysics.js';
+ */
 async function JoltPhysics() {
 
 	if ( Jolt === null ) {
 
-		const { default: initJolt } = await import( `${JOLT_PATH}` );
+		const { default: initJolt } = await import( JOLT_PATH /* @vite-ignore */ );
 		Jolt = await initJolt();
 
 	}
@@ -206,11 +222,13 @@ async function JoltPhysics() {
 
 	//
 
-	const clock = new Clock();
+	const timer = new Timer();
 
 	function step() {
 
-		let deltaTime = clock.getDelta();
+		timer.update();
+
+		let deltaTime = timer.getDelta();
 
 		// Don't go below 30 Hz to prevent spiral of death
 		deltaTime = Math.min( deltaTime, 1.0 / 30.0 );
@@ -270,9 +288,44 @@ async function JoltPhysics() {
 	setInterval( step, 1000 / frameRate );
 
 	return {
+		/**
+		 * Adds the given scene to this physics simulation. Only meshes with a
+		 * `physics` object in their {@link Object3D#userData} field will be honored.
+		 * The object can be used to store the mass and restitution of the mesh. E.g.:
+		 * ```js
+		 * box.userData.physics = { mass: 1, restitution: 0 };
+		 * ```
+		 *
+		 * @method
+		 * @name JoltPhysics#addScene
+		 * @param {Object3D} scene The scene or any type of 3D object to add.
+		 */
 		addScene: addScene,
+
+		/**
+		 * Adds the given mesh to this physics simulation.
+		 *
+		 * @method
+		 * @name JoltPhysics#addMesh
+		 * @param {Mesh} mesh The mesh to add.
+		 * @param {number} [mass=0] The mass in kg of the mesh.
+		 * @param {number} [restitution=0] The restitution of the mesh, usually from 0 to 1. Represents how "bouncy" objects are when they collide with each other.
+		 */
 		addMesh: addMesh,
+
+		/**
+		 * Set the position of the given mesh which is part of the physics simulation. Calling this
+		 * method will reset the current simulated velocity of the mesh.
+		 *
+		 * @method
+		 * @name JoltPhysics#setMeshPosition
+		 * @param {Mesh} mesh The mesh to update the position for.
+		 * @param {Vector3} position - The new position.
+		 * @param {number} [index=0] - If the mesh is instanced, the index represents the instanced ID.
+		 */
 		setMeshPosition: setMeshPosition,
+
+		// NOOP
 		setMeshVelocity: setMeshVelocity
 	};
 

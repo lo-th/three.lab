@@ -24,7 +24,8 @@ import {
 	CompressedTexture,
 	Vector3,
 	Quaternion,
-	REVISION
+	REVISION,
+	ImageUtils
 } from 'three';
 
 /**
@@ -64,13 +65,13 @@ const KHR_mesh_quantization_ExtraAttrTypes = {
 /**
  * An exporter for `glTF` 2.0.
  *
- * glTF (GL Transmission Format) is an [open format specification]{@link https://github.com/KhronosGroup/glTF/tree/master/specification/2.0}
+ * glTF (GL Transmission Format) is an [open format specification](https://github.com/KhronosGroup/glTF/tree/master/specification/2.0)
  * for efficient delivery and loading of 3D content. Assets may be provided either in JSON (.gltf)
  * or binary (.glb) format. External files store textures (.jpg, .png) and additional binary
  * data (.bin). A glTF asset may deliver one or more scenes, including meshes, materials,
  * textures, skins, skeletons, morph targets, animations, lights, and/or cameras.
  *
- * GLTFExporter supports the [glTF 2.0 extensions]{@link https://github.com/KhronosGroup/glTF/tree/master/extensions/}:
+ * GLTFExporter supports the [glTF 2.0 extensions](https://github.com/KhronosGroup/glTF/tree/master/extensions/):
  *
  * - KHR_lights_punctual
  * - KHR_materials_clearcoat
@@ -90,12 +91,14 @@ const KHR_mesh_quantization_ExtraAttrTypes = {
  *
  * The following glTF 2.0 extension is supported by an external user plugin:
  *
- * - [KHR_materials_variants]{@link https://github.com/takahirox/three-gltf-extensions}
+ * - [KHR_materials_variants](https://github.com/takahirox/three-gltf-extensions)
  *
  * ```js
  * const exporter = new GLTFExporter();
  * const data = await exporter.parseAsync( scene, options );
  * ```
+ *
+ * @three_import import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
  */
 class GLTFExporter {
 
@@ -380,8 +383,8 @@ const GLB_CHUNK_TYPE_BIN = 0x004E4942;
  * Compare two arrays
  *
  * @private
- * @param  {Array} array1 Array 1 to compare
- * @param  {Array} array2 Array 2 to compare
+ * @param {Array} array1 Array 1 to compare
+ * @param {Array} array2 Array 2 to compare
  * @return {boolean}        Returns true if both arrays are equal
  */
 function equalArray( array1, array2 ) {
@@ -398,7 +401,7 @@ function equalArray( array1, array2 ) {
  * Converts a string to an ArrayBuffer.
  *
  * @private
- * @param  {string} text
+ * @param {string} text
  * @return {ArrayBuffer}
  */
 function stringToArrayBuffer( text ) {
@@ -424,9 +427,9 @@ function isIdentityMatrix( matrix ) {
  * Get the min and max vectors from the given attribute
  *
  * @private
- * @param  {BufferAttribute} attribute Attribute to find the min/max in range from start to start + count
- * @param  {number} start Start index
- * @param  {number} count Range to cover
+ * @param {BufferAttribute} attribute Attribute to find the min/max in range from start to start + count
+ * @param {number} start Start index
+ * @param {number} count Range to cover
  * @return {Object} Object containing the `min` and `max` values (As an array of attribute.itemSize components)
  */
 function getMinMax( attribute, start, count ) {
@@ -540,32 +543,36 @@ function getCanvas() {
 
 function getToBlobPromise( canvas, mimeType ) {
 
-	if ( canvas.toBlob !== undefined ) {
+	if ( typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas ) {
+
+		let quality;
+
+		// Blink's implementation of convertToBlob seems to default to a quality level of 100%
+		// Use the Blink default quality levels of toBlob instead so that file sizes are comparable.
+		if ( mimeType === 'image/jpeg' ) {
+
+			quality = 0.92;
+
+		} else if ( mimeType === 'image/webp' ) {
+
+			quality = 0.8;
+
+		}
+
+		return canvas.convertToBlob( {
+
+			type: mimeType,
+			quality: quality
+
+		} );
+
+	} else {
+
+		// HTMLCanvasElement code path
 
 		return new Promise( ( resolve ) => canvas.toBlob( resolve, mimeType ) );
 
 	}
-
-	let quality;
-
-	// Blink's implementation of convertToBlob seems to default to a quality level of 100%
-	// Use the Blink default quality levels of toBlob instead so that file sizes are comparable.
-	if ( mimeType === 'image/jpeg' ) {
-
-		quality = 0.92;
-
-	} else if ( mimeType === 'image/webp' ) {
-
-		quality = 0.8;
-
-	}
-
-	return canvas.convertToBlob( {
-
-		type: mimeType,
-		quality: quality
-
-	} );
 
 }
 
@@ -754,7 +761,7 @@ class GLTFWriter {
 	/**
 	 * Serializes a userData.
 	 *
-	 * @param {THREE.Object3D|THREE.Material} object
+	 * @param {THREE.Object3D|THREE.Material|THREE.BufferGeometry|THREE.AnimationClip} object
 	 * @param {Object} objectDef
 	 */
 	serializeUserData( object, objectDef ) {
@@ -797,7 +804,7 @@ class GLTFWriter {
 	/**
 	 * Returns ids for buffer attributes.
 	 *
-	 * @param  {Object} attribute
+	 * @param {Object} attribute
 	 * @param {boolean} [isRelativeCopy=false]
 	 * @return {number} An integer
 	 */
@@ -1052,7 +1059,7 @@ class GLTFWriter {
 
 	/**
 	 * Process a buffer to append to the default one.
-	 * @param  {ArrayBuffer} buffer
+	 * @param {ArrayBuffer} buffer
 	 * @return {0}
 	 */
 	processBuffer( buffer ) {
@@ -1075,7 +1082,7 @@ class GLTFWriter {
 	 * @param {number} componentType
 	 * @param {number} start
 	 * @param {number} count
-	 * @param {?number} target Target usage of the BufferView
+	 * @param {number} [target] Target usage of the BufferView
 	 * @return {Object}
 	 */
 	processBufferView( attribute, componentType, start, count, target ) {
@@ -1264,7 +1271,7 @@ class GLTFWriter {
 	/**
 	 * Process attribute to generate an accessor
 	 * @param {BufferAttribute} attribute Attribute to process
-	 * @param {?BufferGeometry} geometry Geometry used for truncated draw range
+	 * @param {?BufferGeometry} [geometry] Geometry used for truncated draw range
 	 * @param {number} [start=0]
 	 * @param {number} [count=Infinity]
 	 * @return {?number} Index of the processed accessor on the "accessors" array
@@ -1361,10 +1368,10 @@ class GLTFWriter {
 
 	/**
 	 * Process image
-	 * @param  {Image} image to process
-	 * @param  {number} format Identifier of the format (RGBAFormat)
-	 * @param  {boolean} flipY before writing out the image
-	 * @param  {string} mimeType export format
+	 * @param {Image} image to process
+	 * @param {number} format Identifier of the format (RGBAFormat)
+	 * @param {boolean} flipY before writing out the image
+	 * @param {string} mimeType export format
 	 * @return {number}     Index of the processed texture in the "images" array
 	 */
 	processImage( image, format, flipY, mimeType = 'image/png' ) {
@@ -1465,25 +1472,7 @@ class GLTFWriter {
 
 			} else {
 
-				if ( canvas.toDataURL !== undefined ) {
-
-					imageDef.uri = canvas.toDataURL( mimeType );
-
-				} else {
-
-					pending.push(
-
-						getToBlobPromise( canvas, mimeType )
-							.then( blob => new FileReader().readAsDataURL( blob ) )
-							.then( dataURL => {
-
-								imageDef.uri = dataURL;
-
-							} )
-
-					);
-
-				}
+				imageDef.uri = ImageUtils.getDataURL( canvas, mimeType );
 
 			}
 
@@ -1501,7 +1490,7 @@ class GLTFWriter {
 
 	/**
 	 * Process sampler
-	 * @param  {Texture} map Texture to process
+	 * @param {Texture} map Texture to process
 	 * @return {number}      Index of the processed texture in the "samplers" array
 	 */
 	processSampler( map ) {
@@ -1523,7 +1512,7 @@ class GLTFWriter {
 
 	/**
 	 * Process texture
-	 * @param  {Texture} map Map to process
+	 * @param {Texture} map Map to process
 	 * @return {Promise<number>} Index of the processed texture in the "textures" array
 	 */
 	async processTextureAsync( map ) {
@@ -1569,8 +1558,8 @@ class GLTFWriter {
 
 	/**
 	 * Process material
-	 * @param  {THREE.Material} material Material to process
-	 * @return {Promise<number|null>} Index of the processed material in the "materials" array
+	 * @param {THREE.Material} material Material to process
+	 * @return {Promise<?number>} Index of the processed material in the "materials" array
 	 */
 	async processMaterialAsync( material ) {
 
@@ -1745,8 +1734,8 @@ class GLTFWriter {
 
 	/**
 	 * Process mesh
-	 * @param  {THREE.Mesh} mesh Mesh to process
-	 * @return {Promise<number|null>} Index of the processed mesh in the "meshes" array
+	 * @param {THREE.Mesh} mesh Mesh to process
+	 * @return {Promise<?number>} Index of the processed mesh in the "meshes" array
 	 */
 	async processMeshAsync( mesh ) {
 
@@ -1863,12 +1852,12 @@ class GLTFWriter {
 				! ( array instanceof Uint8Array ) ) {
 
 				console.warn( 'GLTFExporter: Attribute "skinIndex" converted to type UNSIGNED_SHORT.' );
-				modifiedAttribute = new BufferAttribute( new Uint16Array( array ), attribute.itemSize, attribute.normalized );
+				modifiedAttribute = GLTFExporter.Utils.toTypedBufferAttribute( attribute, Uint16Array );
 
 			} else if ( ( array instanceof Uint32Array || array instanceof Int32Array ) && ! attributeName.startsWith( '_' ) ) {
 
 				console.warn( `GLTFExporter: Attribute "${ attributeName }" converted to type FLOAT.` );
-				modifiedAttribute = GLTFExporter.Utils.toFloat32BufferAttribute( attribute );
+				modifiedAttribute = GLTFExporter.Utils.toTypedBufferAttribute( attribute, Float32Array );
 
 			}
 
@@ -2150,7 +2139,7 @@ class GLTFWriter {
 
 	/**
 	 * Process camera
-	 * @param  {THREE.Camera} camera Camera to process
+	 * @param {THREE.Camera} camera Camera to process
 	 * @return {number} Index of the processed mesh in the "camera" array
 	 */
 	processCamera( camera ) {
@@ -2200,7 +2189,7 @@ class GLTFWriter {
 	 *
 	 * @param {THREE.AnimationClip} clip
 	 * @param {THREE.Object3D} root
-	 * @return {number|null}
+	 * @return {?number}
 	 */
 	processAnimation( clip, root ) {
 
@@ -2294,11 +2283,15 @@ class GLTFWriter {
 
 		}
 
-		json.animations.push( {
+		const animationDef = {
 			name: clip.name || 'clip_' + json.animations.length,
 			samplers: samplers,
 			channels: channels
-		} );
+		};
+
+		this.serializeUserData( clip, animationDef );
+
+		json.animations.push( animationDef );
 
 		return json.animations.length - 1;
 
@@ -2306,7 +2299,7 @@ class GLTFWriter {
 
 	/**
 	 * @param {THREE.Object3D} object
-	 * @return {number|null}
+	 * @return {?number}
 	 */
 	 processSkin( object ) {
 
@@ -2351,7 +2344,7 @@ class GLTFWriter {
 
 	/**
 	 * Process Object3D node
-	 * @param  {THREE.Object3D} object Object3D to processNodeAsync
+	 * @param {THREE.Object3D} object Object3D to processNodeAsync
 	 * @return {Promise<number>} Index of the node in the nodes list
 	 */
 	async processNodeAsync( object ) {
@@ -2361,6 +2354,13 @@ class GLTFWriter {
 		const nodeMap = this.nodeMap;
 
 		if ( ! json.nodes ) json.nodes = [];
+
+		// Handle pivot by creating a container node
+		if ( object.pivot !== null ) {
+
+			return await this._processNodeWithPivotAsync( object );
+
+		}
 
 		const nodeDef = {};
 
@@ -2423,6 +2423,9 @@ class GLTFWriter {
 
 		if ( object.isSkinnedMesh ) this.skins.push( object );
 
+		const nodeIndex = json.nodes.push( nodeDef ) - 1;
+		nodeMap.set( object, nodeIndex );
+
 		if ( object.children.length > 0 ) {
 
 			const children = [];
@@ -2433,9 +2436,9 @@ class GLTFWriter {
 
 				if ( child.visible || options.onlyVisible === false ) {
 
-					const nodeIndex = await this.processNodeAsync( child );
+					const childNodeIndex = await this.processNodeAsync( child );
 
-					if ( nodeIndex !== null ) children.push( nodeIndex );
+					if ( childNodeIndex !== null ) children.push( childNodeIndex );
 
 				}
 
@@ -2451,15 +2454,133 @@ class GLTFWriter {
 
 		} );
 
-		const nodeIndex = json.nodes.push( nodeDef ) - 1;
-		nodeMap.set( object, nodeIndex );
 		return nodeIndex;
 
 	}
 
 	/**
+	 * Process Object3D node with pivot using container approach
+	 * @param {THREE.Object3D} object Object3D with pivot
+	 * @return {Promise<number>} Index of the container node
+	 */
+	async _processNodeWithPivotAsync( object ) {
+
+		const json = this.json;
+		const options = this.options;
+		const nodeMap = this.nodeMap;
+
+		const pivot = object.pivot;
+
+		// Container node: holds position + pivot offset, rotation, scale
+		// Animations will target this node
+		const containerDef = {};
+
+		const rotation = object.quaternion.toArray();
+		const position = [
+			object.position.x + pivot.x,
+			object.position.y + pivot.y,
+			object.position.z + pivot.z
+		];
+		const scale = object.scale.toArray();
+
+		if ( ! equalArray( rotation, [ 0, 0, 0, 1 ] ) ) {
+
+			containerDef.rotation = rotation;
+
+		}
+
+		if ( ! equalArray( position, [ 0, 0, 0 ] ) ) {
+
+			containerDef.translation = position;
+
+		}
+
+		if ( ! equalArray( scale, [ 1, 1, 1 ] ) ) {
+
+			containerDef.scale = scale;
+
+		}
+
+		// Store pivot in extras for round-trip reconstruction
+		containerDef.extras = { pivot: pivot.toArray() };
+
+		if ( object.name !== '' ) containerDef.name = String( object.name );
+
+		this.serializeUserData( object, containerDef );
+
+		const containerIndex = json.nodes.push( containerDef ) - 1;
+
+		// Map original object to container so animations target it
+		nodeMap.set( object, containerIndex );
+
+		// Child node: holds mesh with -pivot offset
+		const childDef = {};
+
+		const childPosition = [ - pivot.x, - pivot.y, - pivot.z ];
+
+		if ( ! equalArray( childPosition, [ 0, 0, 0 ] ) ) {
+
+			childDef.translation = childPosition;
+
+		}
+
+		if ( object.isMesh || object.isLine || object.isPoints ) {
+
+			const meshIndex = await this.processMeshAsync( object );
+
+			if ( meshIndex !== null ) childDef.mesh = meshIndex;
+
+		} else if ( object.isCamera ) {
+
+			childDef.camera = this.processCamera( object );
+
+		}
+
+		if ( object.isSkinnedMesh ) this.skins.push( object );
+
+		const childIndex = json.nodes.push( childDef ) - 1;
+
+		// Build children array for container
+		const containerChildren = [ childIndex ];
+
+		// Process object's children as children of the child node
+		if ( object.children.length > 0 ) {
+
+			const grandchildren = [];
+
+			for ( let i = 0, l = object.children.length; i < l; i ++ ) {
+
+				const child = object.children[ i ];
+
+				if ( child.visible || options.onlyVisible === false ) {
+
+					const childNodeIndex = await this.processNodeAsync( child );
+
+					if ( childNodeIndex !== null ) grandchildren.push( childNodeIndex );
+
+				}
+
+			}
+
+			if ( grandchildren.length > 0 ) childDef.children = grandchildren;
+
+		}
+
+		containerDef.children = containerChildren;
+
+		await this._invokeAllAsync( function ( ext ) {
+
+			ext.writeNode && ext.writeNode( object, containerDef );
+
+		} );
+
+		return containerIndex;
+
+	}
+
+	/**
 	 * Process Scene
-	 * @param  {Scene} scene Scene to process
+	 * @param {Scene} scene Scene to process
 	 */
 	async processSceneAsync( scene ) {
 
@@ -2503,7 +2624,7 @@ class GLTFWriter {
 
 	/**
 	 * Creates a Scene to hold a list of objects and parse it
-	 * @param  {Array<THREE.Object3D>} objects List of objects to process
+	 * @param {Array<THREE.Object3D>} objects List of objects to process
 	 */
 	async processObjectsAsync( objects ) {
 
@@ -3544,9 +3665,9 @@ GLTFExporter.Utils = {
 
 	},
 
-	toFloat32BufferAttribute: function ( srcAttribute ) {
+	toTypedBufferAttribute: function ( srcAttribute, TypedArray ) {
 
-		const dstAttribute = new BufferAttribute( new Float32Array( srcAttribute.count * srcAttribute.itemSize ), srcAttribute.itemSize, false );
+		const dstAttribute = new BufferAttribute( new TypedArray( srcAttribute.count * srcAttribute.itemSize ), srcAttribute.itemSize, false );
 
 		if ( ! srcAttribute.normalized && ! srcAttribute.isInterleavedBufferAttribute ) {
 

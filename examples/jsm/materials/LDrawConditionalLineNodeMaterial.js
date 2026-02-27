@@ -1,5 +1,5 @@
-import { Color } from 'three';
-import { attribute, cameraProjectionMatrix, dot, float, Fn, modelViewMatrix, modelViewProjection, NodeMaterial, normalize, positionGeometry, sign, uniform, varyingProperty, vec2, vec4 } from 'three/tsl';
+import { Color, NodeMaterial } from 'three/webgpu';
+import { attribute, cameraProjectionMatrix, dot, float, Fn, modelViewMatrix, modelViewProjection, normalize, positionGeometry, sign, uniform, varyingProperty, vec2, vec4 } from 'three/tsl';
 
 /**
  * A special line material for meshes loaded via {@link LDrawLoader}.
@@ -8,6 +8,7 @@ import { attribute, cameraProjectionMatrix, dot, float, Fn, modelViewMatrix, mod
  * import the class from `LDrawConditionalLineMaterial.js`.
  *
  * @augments NodeMaterial
+ * @three_import import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
  */
 class LDrawConditionalLineMaterial extends NodeMaterial {
 

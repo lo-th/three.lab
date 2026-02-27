@@ -6,44 +6,165 @@ import {
 	NodeMaterial
 } from 'three/webgpu';
 
-import { Fn, float, vec3, acos, add, mul, clamp, cos, dot, exp, max, mix, modelViewProjection, normalize, positionWorld, pow, smoothstep, sub, varying, varyingProperty, vec4, uniform, cameraPosition } from 'three/tsl';
+import { Fn, float, vec2, vec3, acos, add, mul, clamp, cos, dot, exp, max, mix, modelViewProjection, normalize, positionWorld, pow, smoothstep, sub, varyingProperty, vec4, uniform, cameraPosition, fract, floor, sin, time, Loop, If } from 'three/tsl';
 
 /**
- * Based on "A Practical Analytic Model for Daylight"
- * aka The Preetham Model, the de facto standard analytic skydome model
- * https://www.researchgate.net/publication/220720443_A_Practical_Analytic_Model_for_Daylight
+ * Represents a skydome for scene backgrounds. Based on [A Practical Analytic Model for Daylight](https://www.researchgate.net/publication/220720443_A_Practical_Analytic_Model_for_Daylight)
+ * aka The Preetham Model, the de facto standard for analytical skydomes.
  *
- * First implemented by Simon Wallner
- * http://simonwallner.at/project/atmospheric-scattering/
+ * Note that this class can only be used with {@link WebGPURenderer}.
+ * When using {@link WebGLRenderer}, use {@link Sky}.
  *
- * Improved by Martin Upitis
- * http://blenderartists.org/forum/showthread.php?245954-preethams-sky-impementation-HDR
+ * More references:
  *
- * Three.js integration by zz85 http://twitter.com/blurspline
-*/
-
+ * - {@link http://simonwallner.at/project/atmospheric-scattering/}
+ * - {@link http://blenderartists.org/forum/showthread.php?245954-preethams-sky-impementation-HDR}
+ *
+ * ```js
+ * const sky = new SkyMesh();
+ * sky.scale.setScalar( 10000 );
+ * scene.add( sky );
+ * ```
+ *
+ * It can be useful to hide the sun disc when generating an environment map to avoid artifacts
+ * 
+ * ```js
+ * // disable before rendering environment map
+ * sky.showSunDisc.value = false;
+ * // ...
+ * // re-enable before scene sky box rendering
+ * sky.showSunDisc.value = true;
+ * ```
+ *
+ * @augments Mesh
+ * @three_import import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+ */
 class SkyMesh extends Mesh {
 
+	/**
+	 * Constructs a new skydome.
+	 */
 	constructor() {
 
 		const material = new NodeMaterial();
 
 		super( new BoxGeometry( 1, 1, 1 ), material );
 
+		/**
+		 * The turbidity uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
 		this.turbidity = uniform( 2 );
+
+		/**
+		 * The rayleigh uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
 		this.rayleigh = uniform( 1 );
+
+		/**
+		 * The mieCoefficient uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
 		this.mieCoefficient = uniform( 0.005 );
+
+		/**
+		 * The mieDirectionalG uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
 		this.mieDirectionalG = uniform( 0.8 );
+
+		/**
+		 * The sun position uniform.
+		 *
+		 * @type {UniformNode<vec3>}
+		 */
 		this.sunPosition = uniform( new Vector3() );
+
+		/**
+		 * The up position.
+		 *
+		 * @type {UniformNode<vec3>}
+		 */
 		this.upUniform = uniform( new Vector3( 0, 1, 0 ) );
 
-		this.isSky = true;
+		/**
+		 * The cloud scale uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.cloudScale = uniform( 0.0002 );
+
+		/**
+		 * The cloud speed uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.cloudSpeed = uniform( 0.0001 );
+
+		/**
+		 * The cloud coverage uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.cloudCoverage = uniform( 0.4 );
+
+		/**
+		 * The cloud density uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.cloudDensity = uniform( 0.4 );
+
+		/**
+		 * The cloud elevation uniform.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.cloudElevation = uniform( 0.5 );
+
+		/**
+		 * Whether to render the solar disc.
+		 *
+		 * @type {UniformNode<float>}
+		 */
+		this.showSunDisc = uniform( 1 );
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 * @deprecated Use isSkyMesh instead.
+		 */
+		this.isSky = true; // @deprecated, r182
+
+		/**
+		 * This flag can be used for type testing.
+		 *
+		 * @type {boolean}
+		 * @readonly
+		 * @default true
+		 */
+		this.isSkyMesh = true;
+
+		// Varyings
+
+		const vSunDirection = varyingProperty( 'vec3' );
+		const vSunE = varyingProperty( 'float' );
+		const vBetaR = varyingProperty( 'vec3' );
+		const vBetaM = varyingProperty( 'vec3' );
 
 		const vertexNode = /*@__PURE__*/ Fn( () => {
 
 			// constants for atmospheric scattering
-			const e = float( 2.71828182845904523536028747135266249775724709369995957 );
-			// const pi = float( 3.141592653589793238462643383279502884197169 );
+			const e = float( 2.718281828459045 );
+			// const pi = float( 3.141592653589793 );
 
 			// wavelength of used primaries, according to preetham
 			// const lambda = vec3( 680E-9, 550E-9, 450E-9 );
@@ -66,35 +187,34 @@ class SkyMesh extends Mesh {
 
 			// varying sun position
 
-			const vSunDirection = normalize( this.sunPosition );
-			varyingProperty( 'vec3', 'vSunDirection' ).assign( vSunDirection );
+			const sunDirection = normalize( this.sunPosition );
+			vSunDirection.assign( sunDirection );
 
 			// varying sun intensity
 
-			const angle = dot( vSunDirection, this.upUniform );
+			const angle = dot( sunDirection, this.upUniform );
 			const zenithAngleCos = clamp( angle, - 1, 1 );
 			const sunIntensity = EE.mul( max( 0.0, float( 1.0 ).sub( pow( e, cutoffAngle.sub( acos( zenithAngleCos ) ).div( steepness ).negate() ) ) ) );
-			varyingProperty( 'float', 'vSunE' ).assign( sunIntensity );
+			vSunE.assign( sunIntensity );
 
-			// varying sun fade
+			// sun fade
 
-			const vSunfade = float( 1.0 ).sub( clamp( float( 1.0 ).sub( exp( this.sunPosition.y.div( 450000.0 ) ) ), 0, 1 ) );
-			varyingProperty( 'float', 'vSunfade' ).assign( vSunfade );
+			const sunfade = float( 1.0 ).sub( clamp( float( 1.0 ).sub( exp( this.sunPosition.y.div( 450000.0 ) ) ), 0, 1 ) );
 
 			// varying vBetaR
 
-			const rayleighCoefficient = this.rayleigh.sub( float( 1.0 ).mul( float( 1.0 ).sub( vSunfade ) ) );
+			const rayleighCoefficient = this.rayleigh.sub( float( 1.0 ).mul( float( 1.0 ).sub( sunfade ) ) );
 
 			// extinction (absorption + out scattering)
 			// rayleigh coefficients
-			varyingProperty( 'vec3', 'vBetaR' ).assign( totalRayleigh.mul( rayleighCoefficient ) );
+			vBetaR.assign( totalRayleigh.mul( rayleighCoefficient ) );
 
 			// varying vBetaM
 
 			const c = float( 0.2 ).mul( this.turbidity ).mul( 10E-18 );
 			const totalMie = float( 0.434 ).mul( c ).mul( MieConst );
 
-			varyingProperty( 'vec3', 'vBetaM' ).assign( totalMie.mul( this.mieCoefficient ) );
+			vBetaM.assign( totalMie.mul( this.mieCoefficient ) );
 
 			// position
 
@@ -105,22 +225,16 @@ class SkyMesh extends Mesh {
 
 		} )();
 
-		const fragmentNode = /*@__PURE__*/ Fn( () => {
-
-			const vSunDirection = varying( vec3(), 'vSunDirection' );
-			const vSunE = varying( float(), 'vSunE' );
-			const vSunfade = varying( float(), 'vSunfade' );
-			const vBetaR = varying( vec3(), 'vBetaR' );
-			const vBetaM = varying( vec3(), 'vBetaM' );
+		const colorNode = /*@__PURE__*/ Fn( () => {
 
 			// constants for atmospheric scattering
-			const pi = float( 3.141592653589793238462643383279502884197169 );
+			const pi = float( 3.141592653589793 );
 
 			// optical length at zenith for molecules
 			const rayleighZenithLength = float( 8.4E3 );
 			const mieZenithLength = float( 1.25E3 );
 			// 66 arc seconds -> degrees, and the cosine of that
-			const sunAngularDiameterCos = float( 0.999956676946448443553574619906976478926848692873900859324 );
+			const sunAngularDiameterCos = float( 0.9999566769464484 );
 
 			// 3.0 / ( 16.0 * pi )
 			const THREE_OVER_SIXTEENPI = float( 0.05968310365946075 );
@@ -165,14 +279,88 @@ class SkyMesh extends Mesh {
 			const L0 = vec3( 0.1 ).mul( Fex );
 
 			// composition + solar disc
-			const sundisk = smoothstep( sunAngularDiameterCos, sunAngularDiameterCos.add( 0.00002 ), cosTheta );
-			L0.addAssign( vSunE.mul( 19000.0 ).mul( Fex ).mul( sundisk ) );
+			const sundisc = smoothstep( sunAngularDiameterCos, sunAngularDiameterCos.add( 0.00002 ), cosTheta ).mul( this.showSunDisc );
+			L0.addAssign( vSunE.mul( 19000.0 ).mul( Fex ).mul( sundisc ) );
 
-			const texColor = add( Lin, L0 ).mul( 0.04 ).add( vec3( 0.0, 0.0003, 0.00075 ) );
+			const texColor = add( Lin, L0 ).mul( 0.04 ).add( vec3( 0.0, 0.0003, 0.00075 ) ).toVar();
 
-			const retColor = pow( texColor, vec3( float( 1.0 ).div( float( 1.2 ).add( vSunfade.mul( 1.2 ) ) ) ) );
+			// Cloud noise functions
+			const hash = Fn( ( [ p ] ) => {
 
-			return vec4( retColor, 1.0 );
+				return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ).mul( 43758.5453123 ) );
+
+			} );
+
+			const noise = Fn( ( [ p_immutable ] ) => {
+
+				const p = vec2( p_immutable ).toVar();
+				const i = floor( p );
+				const f = fract( p );
+				const ff = f.mul( f ).mul( sub( 3.0, f.mul( 2.0 ) ) );
+
+				const a = hash( i );
+				const b = hash( add( i, vec2( 1.0, 0.0 ) ) );
+				const c = hash( add( i, vec2( 0.0, 1.0 ) ) );
+				const d = hash( add( i, vec2( 1.0, 1.0 ) ) );
+
+				return mix( mix( a, b, ff.x ), mix( c, d, ff.x ), ff.y );
+
+			} );
+
+			const fbm = Fn( ( [ p_immutable ] ) => {
+
+				const p = vec2( p_immutable ).toVar();
+				const value = float( 0.0 ).toVar();
+				const amplitude = float( 0.5 ).toVar();
+
+				Loop( 5, () => {
+
+					value.addAssign( amplitude.mul( noise( p ) ) );
+					p.mulAssign( 2.0 );
+					amplitude.mulAssign( 0.5 );
+
+				} );
+
+				return value;
+
+			} );
+
+			// Clouds
+			If( direction.y.greaterThan( 0.0 ).and( this.cloudCoverage.greaterThan( 0.0 ) ), () => {
+
+				// Project to cloud plane (higher elevation = clouds appear lower/closer)
+				const elevation = mix( 1.0, 0.1, this.cloudElevation );
+				const cloudUV = direction.xz.div( direction.y.mul( elevation ) ).toVar();
+				cloudUV.mulAssign( this.cloudScale );
+				cloudUV.addAssign( time.mul( this.cloudSpeed ) );
+
+				// Multi-octave noise for fluffy clouds
+				const cloudNoise = fbm( cloudUV.mul( 1000.0 ) ).add( fbm( cloudUV.mul( 2000.0 ).add( 3.7 ) ).mul( 0.5 ) ).toVar();
+				cloudNoise.assign( cloudNoise.mul( 0.5 ).add( 0.5 ) );
+
+				// Apply coverage threshold
+				const cloudMask = smoothstep( sub( 1.0, this.cloudCoverage ), sub( 1.0, this.cloudCoverage ).add( 0.3 ), cloudNoise ).toVar();
+
+				// Fade clouds near horizon (adjusted by elevation)
+				const horizonFade = smoothstep( 0.0, add( 0.1, mul( 0.2, this.cloudElevation ) ), direction.y );
+				cloudMask.mulAssign( horizonFade );
+
+				// Cloud lighting based on sun position
+				const sunInfluence = dot( direction, vSunDirection ).mul( 0.5 ).add( 0.5 );
+				const daylight = max( 0.0, vSunDirection.y.mul( 2.0 ) );
+
+				// Base cloud color affected by atmosphere
+				const atmosphereColor = Lin.mul( 0.04 );
+				const cloudColor = mix( vec3( 0.3 ), vec3( 1.0 ), daylight ).toVar();
+				cloudColor.assign( mix( cloudColor, atmosphereColor.add( vec3( 1.0 ) ), sunInfluence.mul( 0.5 ) ) );
+				cloudColor.mulAssign( vSunE.mul( 0.00002 ) );
+
+				// Blend clouds with sky
+				texColor.assign( mix( texColor, cloudColor, cloudMask.mul( this.cloudDensity ) ) );
+
+			} );
+
+			return vec4( texColor, 1.0 );
 
 		} )();
 
@@ -180,7 +368,7 @@ class SkyMesh extends Mesh {
 		material.depthWrite = false;
 
 		material.vertexNode = vertexNode;
-		material.fragmentNode = fragmentNode;
+		material.colorNode = colorNode;
 
 	}
 

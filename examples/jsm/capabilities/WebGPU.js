@@ -2,7 +2,7 @@ let isAvailable = ( typeof navigator !== 'undefined' && navigator.gpu !== undefi
 
 if ( typeof window !== 'undefined' && isAvailable ) {
 
-	isAvailable = await navigator.gpu.requestAdapter();
+	isAvailable = Boolean( await navigator.gpu.requestAdapter() );
 
 }
 
@@ -10,6 +10,7 @@ if ( typeof window !== 'undefined' && isAvailable ) {
  * A utility module with basic WebGPU capability testing.
  *
  * @hideconstructor
+ * @three_import import WebGPU from 'three/addons/capabilities/WebGPU.js';
  */
 class WebGPU {
 

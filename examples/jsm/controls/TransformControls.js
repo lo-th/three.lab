@@ -72,6 +72,7 @@ const _objectChangeEvent = { type: 'objectChange' };
  * `TransformControls` expects that its attached 3D object is part of the scene graph.
  *
  * @augments Controls
+ * @three_import import { TransformControls } from 'three/addons/controls/TransformControls.js';
  */
 class TransformControls extends Controls {
 
@@ -79,7 +80,7 @@ class TransformControls extends Controls {
 	 * Constructs a new controls instance.
 	 *
 	 * @param {Camera} camera - The camera of the rendered scene.
-	 * @param {?HTMLDOMElement} domElement - The HTML element used for event listeners.
+	 * @param {?HTMLElement} domElement - The HTML element used for event listeners.
 	 */
 	constructor( camera, domElement = null ) {
 
@@ -358,13 +359,15 @@ class TransformControls extends Controls {
 
 		if ( domElement !== null ) {
 
-			this.connect();
+			this.connect( domElement );
 
 		}
 
 	}
 
-	connect() {
+	connect( element ) {
+
+		super.connect( element );
 
 		this.domElement.addEventListener( 'pointerdown', this._onPointerDown );
 		this.domElement.addEventListener( 'pointermove', this._onPointerHover );
@@ -885,6 +888,40 @@ class TransformControls extends Controls {
 
 	}
 
+	/**
+	 * Sets the colors of the control's gizmo.
+	 *
+	 * @param {number|Color|string} xAxis - The x-axis color.
+	 * @param {number|Color|string} yAxis - The y-axis color.
+	 * @param {number|Color|string} zAxis - The z-axis color.
+	 * @param {number|Color|string} active - The color for active elements.
+	 */
+	setColors( xAxis, yAxis, zAxis, active ) {
+
+		const materialLib = this._gizmo.materialLib;
+
+		materialLib.xAxis.color.set( xAxis );
+		materialLib.yAxis.color.set( yAxis );
+		materialLib.zAxis.color.set( zAxis );
+		materialLib.active.color.set( active );
+		materialLib.xAxisTransparent.color.set( xAxis );
+		materialLib.yAxisTransparent.color.set( yAxis );
+		materialLib.zAxisTransparent.color.set( zAxis );
+		materialLib.activeTransparent.color.set( active );
+
+		// update color caches
+
+		if ( materialLib.xAxis._color ) materialLib.xAxis._color.set( xAxis );
+		if ( materialLib.yAxis._color ) materialLib.yAxis._color.set( yAxis );
+		if ( materialLib.zAxis._color ) materialLib.zAxis._color.set( zAxis );
+		if ( materialLib.active._color ) materialLib.active._color.set( active );
+		if ( materialLib.xAxisTransparent._color ) materialLib.xAxisTransparent._color.set( xAxis );
+		if ( materialLib.yAxisTransparent._color ) materialLib.yAxisTransparent._color.set( yAxis );
+		if ( materialLib.zAxisTransparent._color ) materialLib.zAxisTransparent._color.set( zAxis );
+		if ( materialLib.activeTransparent._color ) materialLib.activeTransparent._color.set( active );
+
+	}
+
 }
 
 // mouse / touch event handlers
@@ -1143,6 +1180,19 @@ class TransformControlsGizmo extends Object3D {
 		const matGray = gizmoMaterial.clone();
 		matGray.color.setHex( 0x787878 );
 
+		// materials in the below property are configurable via setColors()
+
+		this.materialLib = {
+			xAxis: matRed,
+			yAxis: matGreen,
+			zAxis: matBlue,
+			active: matYellow,
+			xAxisTransparent: matRedTransparent,
+			yAxisTransparent: matGreenTransparent,
+			zAxisTransparent: matBlueTransparent,
+			activeTransparent: matYellowTransparent
+		};
+
 		// reusable geometry
 
 		const arrowGeometry = new CylinderGeometry( 0, 0.04, 0.1, 12 );
@@ -1197,16 +1247,16 @@ class TransformControlsGizmo extends Object3D {
 				[ new Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]
 			],
 			XYZ: [
-				[ new Mesh( new OctahedronGeometry( 0.1, 0 ), matWhiteTransparent.clone() ), [ 0, 0, 0 ]]
+				[ new Mesh( new OctahedronGeometry( 0.1, 0 ), matWhiteTransparent ), [ 0, 0, 0 ]]
 			],
 			XY: [
-				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matBlueTransparent.clone() ), [ 0.15, 0.15, 0 ]]
+				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matBlueTransparent ), [ 0.15, 0.15, 0 ]]
 			],
 			YZ: [
-				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matRedTransparent.clone() ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]
+				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matRedTransparent ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]
 			],
 			XZ: [
-				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent.clone() ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]
+				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]
 			]
 		};
 
@@ -1248,13 +1298,13 @@ class TransformControlsGizmo extends Object3D {
 				[ new Line( TranslateHelperGeometry(), matHelper ), null, null, null, 'helper' ]
 			],
 			X: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
 			],
 			Y: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ 0, - 1e3, 0 ], [ 0, 0, Math.PI / 2 ], [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ 0, - 1e3, 0 ], [ 0, 0, Math.PI / 2 ], [ 1e6, 1, 1 ], 'helper' ]
 			],
 			Z: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ 0, 0, - 1e3 ], [ 0, - Math.PI / 2, 0 ], [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ 0, 0, - 1e3 ], [ 0, - Math.PI / 2, 0 ], [ 1e6, 1, 1 ], 'helper' ]
 			]
 		};
 
@@ -1278,7 +1328,7 @@ class TransformControlsGizmo extends Object3D {
 
 		const helperRotate = {
 			AXIS: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
 			]
 		};
 
@@ -1326,7 +1376,7 @@ class TransformControlsGizmo extends Object3D {
 				[ new Mesh( new BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]
 			],
 			XYZ: [
-				[ new Mesh( new BoxGeometry( 0.1, 0.1, 0.1 ), matWhiteTransparent.clone() ) ],
+				[ new Mesh( new BoxGeometry( 0.1, 0.1, 0.1 ), matWhiteTransparent ) ],
 			]
 		};
 
@@ -1359,13 +1409,13 @@ class TransformControlsGizmo extends Object3D {
 
 		const helperScale = {
 			X: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ - 1e3, 0, 0 ], null, [ 1e6, 1, 1 ], 'helper' ]
 			],
 			Y: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ 0, - 1e3, 0 ], [ 0, 0, Math.PI / 2 ], [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ 0, - 1e3, 0 ], [ 0, 0, Math.PI / 2 ], [ 1e6, 1, 1 ], 'helper' ]
 			],
 			Z: [
-				[ new Line( lineGeometry, matHelper.clone() ), [ 0, 0, - 1e3 ], [ 0, - Math.PI / 2, 0 ], [ 1e6, 1, 1 ], 'helper' ]
+				[ new Line( lineGeometry, matHelper ), [ 0, 0, - 1e3 ], [ 0, - Math.PI / 2, 0 ], [ 1e6, 1, 1 ], 'helper' ]
 			]
 		};
 
@@ -1746,7 +1796,7 @@ class TransformControlsGizmo extends Object3D {
 
 				if ( handle.name === this.axis ) {
 
-					handle.material.color.setHex( 0xffff00 );
+					handle.material.color.copy( this.materialLib.active.color );
 					handle.material.opacity = 1.0;
 
 				} else if ( this.axis.split( '' ).some( function ( a ) {
@@ -1755,7 +1805,7 @@ class TransformControlsGizmo extends Object3D {
 
 				} ) ) {
 
-					handle.material.color.setHex( 0xffff00 );
+					handle.material.color.copy( this.materialLib.active.color );
 					handle.material.opacity = 1.0;
 
 				}
