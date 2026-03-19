@@ -65,7 +65,7 @@
 			        this.mouse = uniform( vec3( 0.0,0.0,0.0 ) );
 			        this.cube = uniformCubeTexture( 'cube' );
 			        this._curvature = uniform( 1 );
-			        this._grid = uniform( 0.1 )
+			        this._grid = uniform( 0 )
 
 
 
@@ -147,7 +147,7 @@
 
 
 						// grid
-						If( float(self._grid).notEqual( 0.0 ), () => {
+						If( self._grid.notEqual( 0.0 ), () => {
 							const phi = asin( rayDirection.y ).div( PI );
 							const nsteps = float( 12.0 );
 							phi.mulAssign( nsteps );
