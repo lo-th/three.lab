@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgpu - dynamic panini</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="example.css">
+		<style>
+			body {
+				touch-action: none;
+			}
+		</style>
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Dynamic Cube Reflections</span>
+			</div>
+
+			<small>
+				Realtime reflections rendered with a cube camera.
+			</small>
+		</div>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three/webgpu';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+			import { HDRCubeTextureLoader } from 'three/addons/loaders/HDRCubeTextureLoader.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+            import { 
+            	attribute, color, uniform, uniformCubeTexture, vec2, vec3, uv, dot, smoothstep, sub, float, vec4, sin, fract, add, If, Fn, clamp,
+            	cos, mat2, mul, exp, sqrt, PI, normalize, asin, fwidth, round, abs, atan, mod
+            } from 'three/tsl';
+
+
+            ///
+
+			class VignetteGpu extends THREE.Mesh {
+
+			    constructor( o = {} ) {
+
+			        const geometry = new THREE.PlaneGeometry( 2, 2, 1, 1 );
+			        const material = new THREE.NodeMaterial();
+
+			        super(geometry, material);
+
+			        this.mouse = uniform( vec3( 0.0,0.0,0.0 ) );
+			        this.cube = uniformCubeTexture( 'cube' );
+			        this._curvature = uniform( 1 );
+			        this._grid = uniform( 0.1 )
+
+
+
+			        this._color = uniform( color( '#010101' ) );
+			        this._offset = uniform( 1.05 );
+			        this._darkness = uniform( 1 );
+			        this._grain = uniform( 1.0 ); 
+
+			        
+			        const rotate = /*@__PURE__*/ Fn( ( [ v, a ] ) => {
+
+						const s = sin( a );
+						const c = cos( a );
+						const m = mat2( c, s, s.negate(), c );
+
+						return m.mul( v );
+
+					}, { v: 'vec2', a: 'float', return: 'vec2' } );
+
+			        //screenUV//
+
+			        const uv0 = uv();
+			        const self = this
+
+			        const position = attribute("position")
+			        this.material.vertexNode = vec4( position, 1.0 );
+
+
+			        this.material.colorNode = Fn( () => {
+
+			        	const res = vec2( self._offset )
+			        	const m = self.mouse
+
+			            const uv = vec2( uv0.sub( vec2( 0.5 ) ).mul( res ) ).toVar();
+
+			            // zoom
+			            //uv.mulAssign( exp( iWheel ) );
+			            uv.mulAssign( exp( m.z ) );
+
+			            // Fixed parameter for the Panini projection
+						// k controls the "curvature" of the projection
+						// Try other values (e.g. 1.5, 0.8, etc.) to see different Panini distortion strengths
+
+						const k = self._curvature;//float( 1.0 );
+
+						// -----------------------------------------------
+						// Step 1: Solve for the intersection with the cylinder
+						// -----------------------------------------------
+						// Quadratic equation coefficients
+
+						const A = uv.x.mul( uv.x ).add( k.add( 1.0 ).mul( k.add( 1.0 ) ) );
+						const B = k.mul( k.add( 1.0 ) );
+						const C = k.mul( k ).sub( 1.0 );
+
+						// Solve the quadratic equation for t
+						// t is the distance scaling factor to reach the cylinder surface
+
+						const t = B.add( sqrt( B.mul( B ).sub( A.mul( C ) ) ) ).div( A );
+
+						// -----------------------------------------------
+						// Step 2: Compute the ray direction
+						// -----------------------------------------------
+						// The ray direction intersects the virtual cylinder at this point
+
+						const rayDirection = vec3( t.mul( uv ), t.mul( k.add( 1.0 ) ).sub( k ) );
+						rayDirection.xz.assign( rotate( rayDirection.xz, float(- 0.5).mul( PI ) ) );
+
+						
+						//
+						rayDirection.xy.assign( rotate( rayDirection.xy, m.y ) );
+						rayDirection.xz.assign( rotate( rayDirection.xz, m.x ) );
+
+
+
+						// Normalize the ray direction to ensure proper sampling
+						rayDirection.assign( normalize( rayDirection ) );
+
+						const col = self.cube.sample( rayDirection ).rgb;
+
+
+						// grid
+						If( float(self._grid).notEqual( 0.0 ), () => {
+							const phi = asin( rayDirection.y ).div( PI );
+							const nsteps = float( 12.0 );
+							phi.mulAssign( nsteps );
+							col.mulAssign( add( 0.6, mul( 0.4, smoothstep( 0.0, fwidth( phi ), abs( phi.sub( round( phi ) ) ) ) ) ) );
+							const lambda = atan( rayDirection.x, rayDirection.z ).div( PI );
+							const dlambda = fwidth( lambda );
+							const lambda1 = mod( lambda, 2.0 );
+							const dlambda1 = fwidth( lambda1 );
+							dlambda.assign( dlambda1 );
+							lambda.mulAssign( nsteps );
+							dlambda.mulAssign( nsteps );
+							col.mulAssign( add( 0.6, mul( 0.4, smoothstep( 0.0, dlambda, abs( lambda.sub( round( lambda ) ) ) ) ) ) );
+						})
+
+
+						/// vignette
+
+			            const alpha = float( smoothstep( 0.0, 1.0, dot( uv, uv ) ).sub( sub( 1.0, self._darkness ) ) ).toVar();
+			            const ret = vec4(self._color, alpha).toVar();
+
+			            // film grain noise
+			            If( self._grain.notEqual( 0.0 ), () => {
+
+			                const noise = float( fract( sin( dot( uv, vec2( 12.9898, 78.233 ).mul( 2.0 ) ) ).mul( 43758.5453 ) ) );
+			                const alphaAdd = ( noise.mul( self._grain ).mul( add( 0.5, alpha ) ) ).toVar();
+			                ret.assign( vec4( self._color, clamp(alpha.add(alphaAdd), 0.0, 1.0 ) ) );
+
+			            })
+
+			            return vec4( col, 1.0 );
+
+			        } )();
+
+			        this.material.transparent = true
+			        this.material.depthWrite = false
+			        this.material.depthTest = false
+			        this.material.dithering = true
+			        this.material.toneMapped = true
+			 
+			        Object.defineProperties(this, {
+
+			        	curvature: {
+			                enumerable: true,
+			                get: () => ( this._curvature.value ),
+			                set: ( v ) => { this._curvature.value = v  },
+			            },
+
+			            grid: {
+			                enumerable: true,
+			                get: () => ( this._grid.value > 0.0 ? true: false ),
+			                set: ( v ) => { this._grid.value = v === true ? 1.0 : 0.0;   },
+			            },
+
+			            color: {
+			                enumerable: true,
+			                //get: ( v ) => { console.log(this._color); return this._color.value.getHex(); },
+			                get: () => ( this._color.value.getHex() ),
+			                set: ( v ) => { this._color.value.setHex( v ) },
+			            },
+			            offset: {
+			                enumerable: true,
+			                get: () => ( this._offset.value ),
+			                set: ( v ) => { this._offset.value = v },
+			            },
+			            darkness: {
+			                enumerable: true,
+			                get: () => ( this._darkness.value ),
+			                set: ( v ) => { this._darkness.value = v },
+			            },
+			            grain: {
+			                enumerable: true,
+			                get: () => ( this._grain.value ),
+			                set: ( v ) => { this._grain.value = v },
+			            },
+			        })
+
+			        this.frustumCulled = false;
+			        this.renderOrder = 10000;
+			        this.matrixAutoUpdate = false;
+
+			    }
+
+			    raycast() {
+
+			        return
+
+			    }
+
+			    dispose () {
+
+			        this.parent.remove(this);
+			        this.geometry.dispose()
+			        this.material.dispose()
+			        
+			    }
+
+			}
+
+			///
+
+
+			let camera, scene, scene2, renderer;
+			let cube, sphere, torus, material;
+
+			let cubeCamera, cubeRenderTarget;
+
+			let controls, vignette;
+
+			init();
+
+			async function init() {
+
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 1000 );
+				camera.position.z = 1;
+
+				vignette = new VignetteGpu();
+				camera.add( vignette );
+
+				scene = new THREE.Scene();
+				scene2 = new THREE.Scene();
+				scene2.background = new THREE.Color(0xff9900)
+
+				scene2.add(camera)
+
+				const uvTexture = new THREE.TextureLoader().load( './textures/uv_grid_opengl.jpg' );
+
+				const texture = await new HDRLoader()
+				.setPath( 'textures/equirectangular/' )
+				.loadAsync( 'lobe.hdr' );
+
+				texture.mapping = THREE.EquirectangularReflectionMapping;
+				scene.background = texture;
+				scene.environment = texture;
+				//scene.backgroundBlurriness = 0.5;
+				scene.backgroundIntensity = 1.0;
+				scene.environmentIntensity = 1.0;
+
+				/*const hdrUrls = [ 'px.hdr', 'nx.hdr', 'py.hdr', 'ny.hdr', 'pz.hdr', 'nz.hdr' ];
+				const texture = await new HDRCubeTextureLoader()
+					.setPath( './textures/cube/pisaHDR/' )
+					.loadAsync( hdrUrls );
+
+
+
+				texture.name = 'pisaHDR';
+				texture.minFilter = THREE.LinearMipmapLinearFilter;
+				texture.magFilter = THREE.LinearFilter;
+
+				scene.background = texture;
+				scene.environment = texture;*/
+
+				//
+
+				cubeRenderTarget = new THREE.CubeRenderTarget( 1024 );
+				cubeRenderTarget.texture.type = THREE.HalfFloatType;
+				cubeRenderTarget.texture.minFilter = THREE.LinearMipmapLinearFilter;
+				cubeRenderTarget.texture.magFilter = THREE.LinearFilter;
+				cubeRenderTarget.texture.colorSpace =  THREE.SRGBColorSpace
+				cubeRenderTarget.texture.generateMipmaps = true;
+
+				cubeCamera = new THREE.CubeCamera( 1, 1000, cubeRenderTarget );
+
+				vignette.cube.value = cubeRenderTarget.texture;
+
+
+
+				//
+
+				/*material = new THREE.MeshStandardNodeMaterial( {
+					envMap: cubeRenderTarget.texture,
+					roughness: 0,
+					metalness: 1,
+					side:THREE.BackSide
+				} );
+
+				sphere = new THREE.Mesh( new THREE.IcosahedronGeometry( 15, 8 ), material );
+				sphere = new THREE.Mesh( new THREE.CylinderGeometry( 20, 20,30 ), material );
+				scene.add( sphere );*/
+
+				const material1 = new THREE.MeshStandardNodeMaterial( {
+					map: uvTexture,
+					roughness: 0.1,
+					metalness: 0,
+				} );
+
+				const material2 = new THREE.MeshStandardNodeMaterial( {
+					map: uvTexture,
+					roughness: 0.1,
+					metalness: 0,
+				} );
+
+				cube = new THREE.Mesh( new THREE.BoxGeometry( 15, 15, 15 ), material1 );
+				scene.add( cube );
+
+				torus = new THREE.Mesh( new THREE.TorusKnotGeometry( 8, 3, 128, 16 ), material2 );
+				scene.add( torus );
+
+				//
+
+				renderer = new THREE.WebGPURenderer( { antialias: false } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animation );
+				renderer.toneMapping = THREE.NeutralToneMapping;
+				renderer.inspector = new Inspector();
+				document.body.appendChild( renderer.domElement );
+
+				window.addEventListener( 'resize', onWindowResized );
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				//controls.autoRotate = true;
+
+				const gui = renderer.inspector.createParameters( 'Settings' );
+				//gui.add( material, 'roughness', 0, 1 );
+				//gui.add( material, 'metalness', 0, 1 );
+				gui.add( renderer, 'toneMappingExposure', 0, 2 ).name( 'exposure' );
+				gui.add( scene, 'environmentIntensity', 0, 1 );
+				gui.add( material2, 'envMapIntensity', 0, 1 );
+
+				gui.add( vignette, 'curvature', 0, 3 );
+				gui.add( vignette, 'grid' );
+
+			}
+
+			function onWindowResized() {
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+			}
+
+			async function animation( msTime ) {
+
+				const time = msTime / 1000;
+
+				cube.position.x = Math.cos( time ) * 30;
+				cube.position.y = Math.sin( time ) * 30;
+				cube.position.z = Math.sin( time ) * 30;
+
+				cube.rotation.x += 0.02;
+				cube.rotation.y += 0.03;
+
+				torus.position.x = Math.cos( time + 10 ) * 30;
+				torus.position.y = Math.sin( time + 10 ) * 30;
+				torus.position.z = Math.sin( time + 10 ) * 30;
+
+				torus.rotation.x += 0.02;
+				torus.rotation.y += 0.03;
+
+
+				controls.update();
+				let v = camera.position.clone()
+				//v.z = 0
+				vignette.mouse.value.x = controls.getAzimuthalAngle()
+				vignette.mouse.value.y = -(Math.PI*0.5)+controls.getPolarAngle()
+				vignette.mouse.value.z = controls.getDistance()
+
+				//material.visible = false;
+
+				await cubeCamera.update( renderer, scene );
+
+				//material.visible = true;
+
+				
+
+				await renderer.render( scene2, camera );
+
+			}
+
+
+
+			
+
+		</script>
+
+	</body>
+</html>

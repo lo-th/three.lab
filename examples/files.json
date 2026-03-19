@@ -9,6 +9,9 @@
 		"webgl_enhance_lighting",
 		"webgl_dynamics_lighting",
 		"webgl_dynamic_env",
-		"backroom_fps"
+		"backroom_fps",
+		"webgpu_postprocessing_3dlut",
+		"webgpu_postprocessing_ao",
+		"webgpu_panini"
 	]
 }
