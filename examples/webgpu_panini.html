@@ -62,6 +62,7 @@
 
 			        super(geometry, material);
 
+			        this._ratio = uniform( 1.0 );
 			        this.mouse = uniform( vec3( 0.0,0.0,0.0 ) );
 			        this.cube = uniformCubeTexture( 'cube' );
 			        this._curvature = uniform( 1 );
@@ -71,7 +72,7 @@
 
 			        this._color = uniform( color( '#010101' ) );
 			        this._offset = uniform( 1.05 );
-			        this._darkness = uniform( 1 );
+			        this._darkness = uniform( 0.5 );
 			        this._grain = uniform( 1.0 ); 
 
 			        
@@ -96,10 +97,12 @@
 
 			        this.material.colorNode = Fn( () => {
 
-			        	const res = vec2( self._offset )
+			        	const res = vec2( 1.0, this._ratio )
+			        	const res2 = vec2( self._offset )
 			        	const m = self.mouse
 
 			            const uv = vec2( uv0.sub( vec2( 0.5 ) ).mul( res ) ).toVar();
+			            const uv2 = vec2( uv0.sub( vec2( 0.5 ) ).mul( res2 ) ).toVar();
 
 			            // zoom
 			            //uv.mulAssign( exp( iWheel ) );
@@ -143,7 +146,7 @@
 						// Normalize the ray direction to ensure proper sampling
 						rayDirection.assign( normalize( rayDirection ) );
 
-						const col = self.cube.sample( rayDirection ).rgb;
+						const col = self.cube.sample( rayDirection ).rgb.toVar();
 
 
 						// grid
@@ -165,29 +168,39 @@
 
 						/// vignette
 
-			            const alpha = float( smoothstep( 0.0, 1.0, dot( uv, uv ) ).sub( sub( 1.0, self._darkness ) ) ).toVar();
-			            const ret = vec4(self._color, alpha).toVar();
+			            const alpha = float( smoothstep( 0.0, 1.0, dot( uv2, uv2 ) ).sub( sub( 1.0, self._darkness ) ) ).toVar();
+			            const overlay = smoothstep(vec3(1.0), self._color,  alpha).toVar();
 
 			            // film grain noise
 			            If( self._grain.notEqual( 0.0 ), () => {
 
-			                const noise = float( fract( sin( dot( uv, vec2( 12.9898, 78.233 ).mul( 2.0 ) ) ).mul( 43758.5453 ) ) );
+			                const noise = float( fract( sin( dot( uv2, vec2( 12.9898, 78.233 ).mul( 2.0 ) ) ).mul( 43758.5453 ) ) );
 			                const alphaAdd = ( noise.mul( self._grain ).mul( add( 0.5, alpha ) ) ).toVar();
-			                ret.assign( vec4( self._color, clamp(alpha.add(alphaAdd), 0.0, 1.0 ) ) );
+			                overlay.assign( smoothstep(vec3(1.0), self._color,  clamp(alpha.add(alphaAdd), 0.0, 1.0 ) ) );
 
 			            })
 
-			            return vec4( col, 1.0 );
+			            //const color = vec4( smoothstep(col, self._color, alpha), 1.0 );
+
+			            const color = vec4( col, 1.0 ).mul(overlay);
+
+			            return color;
 
 			        } )();
 
-			        this.material.transparent = true
+			        this.material.transparent = false
 			        this.material.depthWrite = false
 			        this.material.depthTest = false
-			        this.material.dithering = true
-			        this.material.toneMapped = true
+			        this.material.dithering = false
+			        this.material.toneMapped = false
 			 
 			        Object.defineProperties(this, {
+
+			        	ratio: {
+			                enumerable: true,
+			                get: () => ( this._ratio.value ),
+			                set: ( v ) => { this._ratio.value = v },
+			            },
 
 			        	curvature: {
 			                enumerable: true,
@@ -198,7 +211,7 @@
 			            grid: {
 			                enumerable: true,
 			                get: () => ( this._grid.value > 0.0 ? true: false ),
-			                set: ( v ) => { this._grid.value = v === true ? 1.0 : 0.0;   },
+			                set: ( v ) => { this._grid.value = v === true ? 1.0 : 0.0; },
 			            },
 
 			            color: {
@@ -282,22 +295,9 @@
 				scene.background = texture;
 				scene.environment = texture;
 				//scene.backgroundBlurriness = 0.5;
-				scene.backgroundIntensity = 1.0;
-				scene.environmentIntensity = 1.0;
+				scene.backgroundIntensity = 1.5;
+				scene.environmentIntensity = 1.5;
 
-				/*const hdrUrls = [ 'px.hdr', 'nx.hdr', 'py.hdr', 'ny.hdr', 'pz.hdr', 'nz.hdr' ];
-				const texture = await new HDRCubeTextureLoader()
-					.setPath( './textures/cube/pisaHDR/' )
-					.loadAsync( hdrUrls );
-
-
-
-				texture.name = 'pisaHDR';
-				texture.minFilter = THREE.LinearMipmapLinearFilter;
-				texture.magFilter = THREE.LinearFilter;
-
-				scene.background = texture;
-				scene.environment = texture;*/
 
 				//
 
@@ -352,6 +352,7 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animation );
 				renderer.toneMapping = THREE.NeutralToneMapping;
+				renderer.toneMappingExposure = 0.5;
 				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
@@ -364,11 +365,16 @@
 				//gui.add( material, 'roughness', 0, 1 );
 				//gui.add( material, 'metalness', 0, 1 );
 				gui.add( renderer, 'toneMappingExposure', 0, 2 ).name( 'exposure' );
-				gui.add( scene, 'environmentIntensity', 0, 1 );
-				gui.add( material2, 'envMapIntensity', 0, 1 );
+				gui.add( scene, 'environmentIntensity', 0, 2 );
+				gui.add( scene, 'backgroundIntensity', 0, 2 );
+				//gui.add( material2, 'envMapIntensity', 0, 1 );
 
 				gui.add( vignette, 'curvature', 0, 3 );
+				gui.add( vignette, 'ratio', 0, 3 );
 				gui.add( vignette, 'grid' );
+				gui.add( vignette, 'darkness', 0, 1 );
+				gui.add( vignette, 'grain', 0, 1 );
+				gui.add( vignette, 'offset', 0, 3 );
 
 			}
 
