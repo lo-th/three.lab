@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu'
 import { float, If, Fn, uniform, deltaTime, time, vertexIndex, instanceIndex, instancedBufferAttribute, vec2, vec3, vec4, uv, sin, oscSine, texture, pointUV, mod, floor } from 'three/tsl';
 
-const range = 4.8
+const range = 5
 const double = range*2
-const size = 0.05
+const size = 0.06
 export class Sprites extends THREE.Sprite {
 
 	constructor (name, texturemap, max = 1000000) {
