@@ -40,7 +40,7 @@ export class Sprites extends THREE.Sprite {
 
 		const posSheet = Fn(()=>{
 
-			const speed = time.mul(0.3)
+			const speed = time.mul(0.2)
 			const freq = floor(speed.div(double)).mul(double)
 			const position = instancedBufferAttribute( this.pos ).add(vec3(speed.sub(freq),0,0));
 
@@ -67,7 +67,7 @@ export class Sprites extends THREE.Sprite {
 		const spriteSheet = Fn(()=>{
 
 			const fTime = floor(time.div( animCycle )).mod(8);
-			const uv0 = uv().mul( vec2(0.125, 1) ).add(selfUV);
+			const uv0 = uv().mul( vec2(0.125, 0.5) ).add(selfUV);
 			const animateUv = vec2( uv0.x.add( ( fTime ).mul(0.125) ), uv0.y )
 			const myMap = texture( texturemap, animateUv )
 			return myMap
@@ -106,7 +106,7 @@ export class Sprites extends THREE.Sprite {
 		this.pos.setXYZ( this.count, x, y, z ) 
 		this.map.set( i, this.count )
 
-		this.uv.setXY( this.count, 0.125 * this.randInt(0,7), 1 );
+		this.uv.setXY( this.count, 0.125 * this.randInt(0,7), 0.5 * this.randInt(0,1) );
 		this.uv.needsUpdate = true
 		
 		this.count++
