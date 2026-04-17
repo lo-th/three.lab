@@ -91,7 +91,7 @@
 				cubeRenderTarget.texture.type = THREE.HalfFloatType;
 				cubeRenderTarget.texture.minFilter = THREE.LinearMipmapLinearFilter;
 				cubeRenderTarget.texture.magFilter = THREE.LinearFilter;
-				cubeRenderTarget.texture.colorSpace =  THREE.SRGBColorSpace
+				//cubeRenderTarget.texture.colorSpace =  THREE.SRGBColorSpace
 				cubeRenderTarget.texture.generateMipmaps = true;
 
 				cubeCamera = new THREE.CubeCamera( 1, 1000, cubeRenderTarget );
@@ -113,10 +113,21 @@
 				sphere = new THREE.Mesh( new THREE.CylinderGeometry( 20, 20,30 ), material );
 				scene.add( sphere );*/
 
+				const uvMap = new THREE.TextureLoader().load( './textures/ai/base.png' );
+				uvMap.colorSpace = THREE.SRGBColorSpace
+				const uvMetal = new THREE.TextureLoader().load( './textures/ai/metalness.png' );
+				const uvRough = new THREE.TextureLoader().load( './textures/ai/roughness.png' );
+				const uvNorm = new THREE.TextureLoader().load( './textures/ai/normal.png' );
+				const uvHeight = new THREE.TextureLoader().load( './textures/ai/height.png' );
+
 				const material1 = new THREE.MeshStandardNodeMaterial( {
-					map: uvTexture,
-					roughness: 0.1,
-					metalness: 0,
+					map: uvMap,
+					roughnessMap: uvMetal,
+					metalnessMap: uvRough,
+					normalMap:uvNorm,
+					normalScale:new THREE.Vector2(1,-1),
+					roughness: 1,
+					metalness: 1,
 				} );
 
 				const material2 = new THREE.MeshStandardNodeMaterial( {
@@ -127,6 +138,11 @@
 
 				cube = new THREE.Mesh( new THREE.BoxGeometry( 15, 15, 15 ), material1 );
 				scene.add( cube );
+				cube.position.set(15,0,0)
+				let cube2 = new THREE.Mesh( new THREE.BoxGeometry( 15, 15, 15 ), material1 );
+				scene.add( cube2 );
+				cube2.scale.set(-1,1,1)
+				cube2.position.set(0,0,-15)
 
 				torus = new THREE.Mesh( new THREE.TorusKnotGeometry( 8, 3, 128, 16 ), material2 );
 				scene.add( torus );
@@ -177,12 +193,12 @@
 
 				const time = msTime / 1000;
 
-				cube.position.x = Math.cos( time ) * 30;
+				/*cube.position.x = Math.cos( time ) * 30;
 				cube.position.y = Math.sin( time ) * 30;
 				cube.position.z = Math.sin( time ) * 30;
 
 				cube.rotation.x += 0.02;
-				cube.rotation.y += 0.03;
+				cube.rotation.y += 0.03;*/
 
 				torus.position.x = Math.cos( time + 10 ) * 30;
 				torus.position.y = Math.sin( time + 10 ) * 30;

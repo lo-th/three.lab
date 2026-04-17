@@ -39,7 +39,7 @@
 			import { mix, mul, oneMinus, positionLocal, smoothstep, texture, time, rotateUV, Fn, uv, vec2, vec3, vec4, pass, texture3D, uniform, renderOutput } from 'three/tsl';
 			import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 
-			import { Panini } from 'three/addons/tsl/display/PaniniNode.js';
+			//import { Panini } from 'three/addons/tsl/display/PaniniNode.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -47,6 +47,10 @@
 			import { LUT3dlLoader } from 'three/addons/loaders/LUT3dlLoader.js';
 			import { LUTImageLoader } from 'three/addons/loaders/LUTImageLoader.js';
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
+			import { Sprites } from './3TH/Sprites.js';
+
+
 
 			const params = {
 				lut: 'Bourbon 64.CUBE',
@@ -65,14 +69,14 @@
 				'NightLUT': null
 			};
 
-			let camera, scene, renderer, renderPipeline, controls, lutPass, paniniPass;
+			let camera, scene, renderer, renderPipeline, controls, lutPass, paniniPass, gui;
 
 			init();
 
 			async function init() {
 
-				camera = new THREE.PerspectiveCamera( 25, window.innerWidth / window.innerHeight, 0.1, 100 );
-				camera.position.set( 8, 10, 12 );
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera.position.set( 0, 0.1, 5 );
 
 				scene = new THREE.Scene();
 
@@ -233,15 +237,46 @@
 				controls.enableDamping = true;
 				controls.minDistance = 0.1;
 				controls.maxDistance = 50;
-				controls.target.y = 3;
+
+				controls.minAzimuthAngle = -Math.PI*0.25;;
+				controls.maxAzimuthAngle = Math.PI*0.25;;
+				controls.minPolarAngle = Math.PI*0.25;
+				controls.maxPolarAngle = Math.PI*0.5;
+				controls.target.y = 0.1;
 
 				// gui
 
-				const gui = renderer.inspector.createParameters( 'Settings' );
+				gui = renderer.inspector.createParameters( 'Settings' );
 				gui.add( params, 'lut', Object.keys( lutMap ) );
 				gui.add( params, 'intensity', 0, 1 );
 
 				window.addEventListener( 'resize', onWindowResize );
+
+				testSprite()
+
+			}
+
+			function testSprite(){
+
+				const textureLoader = new THREE.TextureLoader();
+				textureLoader.load('./textures/run.png', function(tx){
+
+					tx.colorSpace = THREE.SRGBColorSpace;
+					tx.repeat.set(0.125, 1)
+					tx.wrapS = THREE.RepeatWrapping 
+				    tx.wrapT = THREE.RepeatWrapping
+
+					const run = new Sprites('run', tx)
+					scene.add(run)
+
+					for(let i = 0; i<100000; i++) run.addItem(i)
+
+					run.count = 1000
+					gui.add( run, 'count', 10, 1000000, 1 );
+
+				})
+
+
 
 			}
 
