@@ -53,7 +53,7 @@
 
 
 			const params = {
-				lut: 'Cubicle 99.CUBE',
+				lut: 'Bourbon 64.CUBE',
 				intensity: 1
 			};
 
@@ -79,6 +79,8 @@
 				camera.position.set( 0, 0.1, 5.15 );
 
 				scene = new THREE.Scene();
+
+				scene.fog = new THREE.Fog( 0x000000, 2, 9 ); 
 
 				// Loaders
 
