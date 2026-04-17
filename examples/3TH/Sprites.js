@@ -40,7 +40,7 @@ export class Sprites extends THREE.Sprite {
 
 		const posSheet = Fn(()=>{
 
-			const speed = time.mul(0.4)
+			const speed = time.mul(0.3)
 			const freq = floor(speed.div(double)).mul(double)
 			const position = instancedBufferAttribute( this.pos ).add(vec3(speed.sub(freq),0,0));
 
@@ -55,13 +55,14 @@ export class Sprites extends THREE.Sprite {
 		})
 		//this.material.color.setHSL( 1.0, 0.3, 0.7, THREE.SRGBColorSpace );
 		this.material.positionNode = posSheet()
+		//this.material.rotationNode = Math.PI 
 		//this.material.rotationNode = time.add( instanceIndex ).sin();
 		this.material.scaleNode = uniform( size );
 
 		this.uv = new THREE.InstancedBufferAttribute( new Float32Array( max*2 ), 2 );
 		const selfUV = instancedBufferAttribute( this.uv )
 
-		const animCycle = 1/8
+		const animCycle = 1/12
 
 		const spriteSheet = Fn(()=>{
 
