@@ -62,7 +62,7 @@ export class Sprites extends THREE.Sprite {
 		this.uv = new THREE.InstancedBufferAttribute( new Float32Array( max*2 ), 2 );
 		const selfUV = instancedBufferAttribute( this.uv )
 
-		const animCycle = 1/12
+		const animCycle = 1/20
 
 		const spriteSheet = Fn(()=>{
 
