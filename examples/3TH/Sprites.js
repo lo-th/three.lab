@@ -3,7 +3,7 @@ import { float, If, Fn, uniform, deltaTime, time, vertexIndex, instanceIndex, in
 
 const range = 4.8
 const double = range*2
-
+const size = 0.05
 export class Sprites extends THREE.Sprite {
 
 	constructor (name, texturemap, max = 1000000) {
@@ -56,7 +56,7 @@ export class Sprites extends THREE.Sprite {
 		//this.material.color.setHSL( 1.0, 0.3, 0.7, THREE.SRGBColorSpace );
 		this.material.positionNode = posSheet()
 		//this.material.rotationNode = time.add( instanceIndex ).sin();
-		this.material.scaleNode = uniform( 0.1 );
+		this.material.scaleNode = uniform( size );
 
 		this.uv = new THREE.InstancedBufferAttribute( new Float32Array( max*2 ), 2 );
 		const selfUV = instancedBufferAttribute( this.uv )
@@ -99,7 +99,7 @@ export class Sprites extends THREE.Sprite {
 
 		if(i===undefined) i = this.count
 		if(x===undefined) x = this.rand(-range, range)
-		if(y===undefined) y = 0.05
+		if(y===undefined) y = size*0.5
 		if(z===undefined) z = this.rand(-range, range)
 
 		this.pos.setXYZ( this.count, x, y, z ) 
