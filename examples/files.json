@@ -12,6 +12,8 @@
 		"backroom_fps",
 		"webgpu_postprocessing_3dlut",
 		"webgpu_postprocessing_ao",
-		"webgpu_panini"
+		"webgpu_outline",
+		"webgpu_panini",
+		"webgpu_random_uv"
 	]
 }

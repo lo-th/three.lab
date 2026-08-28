@@ -97,6 +97,7 @@
 				cubeCamera = new THREE.CubeCamera( 1, 1000, cubeRenderTarget );
 
 				vignette.cube.value = cubeRenderTarget.texture;
+				vignette.aspect = camera.aspect
 
 
 
@@ -172,6 +173,7 @@
 				//gui.add( material2, 'envMapIntensity', 0, 1 );
 
 				gui.add( vignette, 'curvature', 0, 3 );
+				gui.add( vignette, 'spherical', -3, 3 );
 				gui.add( vignette, 'ratio', 0, 3 );
 				gui.add( vignette, 'grid' );
 				gui.add( vignette, 'darkness', 0, 1 );
@@ -183,9 +185,10 @@
 			function onWindowResized() {
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
+
+				vignette.aspect = camera.aspect
 
 			}
 
@@ -218,10 +221,6 @@
 				//material.visible = false;
 
 				await cubeCamera.update( renderer, scene );
-
-				//material.visible = true;
-
-				
 
 				await renderer.render( scene2, camera );
 

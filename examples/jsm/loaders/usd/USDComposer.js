@@ -1,10 +1,17 @@
 import {
 	AnimationClip,
+	BoxGeometry,
 	BufferAttribute,
 	BufferGeometry,
+	CapsuleGeometry,
 	ClampToEdgeWrapping,
+	Color,
+	ConeGeometry,
+	CylinderGeometry,
+	DirectionalLight,
 	Euler,
 	Group,
+	LoaderUtils,
 	Matrix4,
 	Mesh,
 	MeshPhysicalMaterial,
@@ -13,13 +20,17 @@ import {
 	Object3D,
 	OrthographicCamera,
 	PerspectiveCamera,
+	PointLight,
 	Quaternion,
 	QuaternionKeyframeTrack,
+	RectAreaLight,
 	RepeatWrapping,
 	ShapeUtils,
 	SkinnedMesh,
 	Skeleton,
 	Bone,
+	SphereGeometry,
+	SpotLight,
 	SRGBColorSpace,
 	Texture,
 	Vector2,
@@ -73,6 +84,7 @@ class USDComposer {
 		this.textureCache = {};
 		this.skinnedMeshes = [];
 		this.manager = manager;
+		this.texturePromises = [];
 
 	}
 
@@ -92,6 +104,7 @@ class USDComposer {
 		this.basePath = basePath;
 		this.skinnedMeshes = [];
 		this.skeletons = {};
+		this.texturePromises = [];
 
 		// Build indexes for O(1) lookups
 		this._buildIndexes();
@@ -99,7 +112,7 @@ class USDComposer {
 		// Get FPS from root spec
 		const rootSpec = this.specsByPath[ '/' ];
 		const rootFields = rootSpec ? rootSpec.fields : {};
-		this.fps = rootFields.framesPerSecond || rootFields.timeCodesPerSecond || 30;
+		this.fps = rootFields.timeCodesPerSecond || rootFields.framesPerSecond || 24;
 
 		const group = new Group();
 		this._buildHierarchy( group, '/' );
@@ -107,8 +120,28 @@ class USDComposer {
 		// Bind skeletons to skinned meshes
 		this._bindSkeletons();
 
+		// Expose skeleton on the root group so that AnimationMixer's
+		// PropertyBinding.findNode resolves bone names before scene objects.
+		// Without this, Xform prims that share a name with a skeleton joint
+		// would be animated instead of the bone.
+		const skeletonPaths = Object.keys( this.skeletons );
+		if ( skeletonPaths.length === 1 ) {
+
+			group.skeleton = this.skeletons[ skeletonPaths[ 0 ] ].skeleton;
+
+		}
+
 		// Build animations
 		group.animations = this._buildAnimations();
+
+		// Handle metersPerUnit scaling
+		const metersPerUnit = rootFields.metersPerUnit;
+
+		if ( metersPerUnit !== undefined && metersPerUnit !== 1 ) {
+
+			group.scale.setScalar( metersPerUnit );
+
+		}
 
 		// Handle Z-up to Y-up conversion
 		if ( rootSpec && rootSpec.fields && rootSpec.fields.upAxis === 'Z' ) {
@@ -438,18 +471,37 @@ class USDComposer {
 
 				}
 
-				// Build shader index (shaders are children of materials)
+				// Build shader index (shaders are children or descendants of materials)
 				if ( typeName === 'Shader' && lastSlash > 0 ) {
 
-					const materialPath = path.slice( 0, lastSlash );
+					// Walk up ancestors to find the nearest Material prim.
+					// Shaders may be direct children of a Material, or nested
+					// inside a NodeGraph (common with MaterialX materials).
 
-					if ( ! this.shadersByMaterialPath.has( materialPath ) ) {
+					let ancestorPath = path.slice( 0, lastSlash );
 
-						this.shadersByMaterialPath.set( materialPath, [] );
+					while ( ancestorPath.length > 0 ) {
+
+						const ancestorSpec = this.specsByPath[ ancestorPath ];
+
+						if ( ancestorSpec && ancestorSpec.specType === SpecType.Prim && ancestorSpec.fields.typeName === 'Material' ) {
+
+							if ( ! this.shadersByMaterialPath.has( ancestorPath ) ) {
+
+								this.shadersByMaterialPath.set( ancestorPath, [] );
+
+							}
+
+							this.shadersByMaterialPath.get( ancestorPath ).push( path );
+							break;
+
+						}
+
+						const slash = ancestorPath.lastIndexOf( '/' );
+						if ( slash <= 0 ) break;
+						ancestorPath = ancestorPath.slice( 0, slash );
 
 					}
-
-					this.shadersByMaterialPath.get( materialPath ).push( path );
 
 				}
 
@@ -576,56 +628,71 @@ class USDComposer {
 			const typeName = spec.fields.typeName;
 
 			// Check for references/payloads
-			const refValue = this._getReference( spec );
-			if ( refValue ) {
+			const refValues = this._getReferences( spec );
+			if ( refValues.length > 0 ) {
 
 				// Get local variant selections from this prim
 				const localVariants = this._getLocalVariantSelections( spec.fields );
 
-				// Resolve the reference
-				const referencedGroup = this._resolveReference( refValue, localVariants );
-				if ( referencedGroup ) {
+				// Resolve all references
+				const resolvedGroups = [];
+				for ( const refValue of refValues ) {
+
+					const referencedGroup = this._resolveReference( refValue, localVariants );
+					if ( referencedGroup ) resolvedGroups.push( referencedGroup );
+
+				}
+
+				if ( resolvedGroups.length > 0 ) {
 
 					const attrs = this._getAttributes( path );
 
-					// Check if the referenced content is a single mesh (or container with single mesh)
+					// Single reference with single mesh: use optimized path
 					// This handles the USDZExporter pattern: Xform references geometry file
-					const singleMesh = this._findSingleMesh( referencedGroup );
+					if ( resolvedGroups.length === 1 ) {
 
-					if ( singleMesh && ( typeName === 'Xform' || ! typeName ) ) {
+						const singleMesh = this._findSingleMesh( resolvedGroups[ 0 ] );
 
-						// Merge the mesh into this prim
-						singleMesh.name = name;
-						this.applyTransform( singleMesh, spec.fields, attrs );
+						if ( singleMesh && ( typeName === 'Xform' || ! typeName ) ) {
 
-						// Apply material binding from the referencing prim if present
-						this._applyMaterialBinding( singleMesh, path );
+							// Merge the mesh into this prim
+							singleMesh.name = name;
+							this.applyTransform( singleMesh, spec.fields, attrs );
 
-						parent.add( singleMesh );
+							// Apply material binding from the referencing prim if present
+							this._applyMaterialBinding( singleMesh, path );
 
-						// Still build local children (overrides)
-						this._buildHierarchy( singleMesh, path );
+							parent.add( singleMesh );
 
-					} else {
+							// Still build local children (overrides)
+							this._buildHierarchy( singleMesh, path );
 
-						// Create a container for the referenced content
-						const obj = new Object3D();
-						obj.name = name;
-						this.applyTransform( obj, spec.fields, attrs );
+							continue;
 
-						// Add all children from the referenced group
+						}
+
+					}
+
+					// Create a container for the referenced content
+					const obj = new Object3D();
+					obj.name = name;
+					this.applyTransform( obj, spec.fields, attrs );
+
+					// Add all children from all resolved references
+					for ( const referencedGroup of resolvedGroups ) {
+
 						while ( referencedGroup.children.length > 0 ) {
 
 							obj.add( referencedGroup.children[ 0 ] );
 
 						}
 
-						parent.add( obj );
-
-						// Still build local children (overrides)
-						this._buildHierarchy( obj, path );
-
 					}
+
+					parent.add( obj );
+
+					// Still build local children (overrides)
+					this._buildHierarchy( obj, path );
 
 					continue;
 
@@ -680,6 +747,25 @@ class USDComposer {
 				this.applyTransform( obj, spec.fields, attrs );
 				parent.add( obj );
 				this._buildHierarchy( obj, path );
+
+			} else if ( typeName === 'DistantLight' || typeName === 'SphereLight' || typeName === 'RectLight' || typeName === 'DiskLight' ) {
+
+				const obj = this._buildLight( path, typeName );
+				obj.name = name;
+				const attrs = this._getAttributes( path );
+				this.applyTransform( obj, spec.fields, attrs );
+				parent.add( obj );
+				this._buildHierarchy( obj, path );
+
+			} else if ( typeName === 'Cube' || typeName === 'Sphere' || typeName === 'Cylinder' || typeName === 'Cone' || typeName === 'Capsule' ) {
+
+				const obj = this._buildGeomPrimitive( path, spec, typeName );
+				if ( obj ) {
+
+					parent.add( obj );
+					this._buildHierarchy( obj, path );
+
+				}
 
 			} else if ( typeName === 'Material' || typeName === 'Shader' || typeName === 'GeomSubset' ) {
 
@@ -769,14 +855,13 @@ class USDComposer {
 
 		}
 
-		// Combine with base path
-		if ( this.basePath ) {
+		if ( ! this.basePath ) return cleanPath;
 
-			return this.basePath + '/' + cleanPath;
+		// LoaderUtils.resolveURL expects basePath to end with a separator;
+		// the USDZ flow passes the zip-internal directory name without one.
+		const base = this.basePath.endsWith( '/' ) ? this.basePath : this.basePath + '/';
 
-		}
-
-		return cleanPath;
+		return LoaderUtils.resolveURL( cleanPath, base );
 
 	}
 
@@ -955,27 +1040,44 @@ class USDComposer {
 	}
 
 	/**
-	 * Get reference value from a prim spec.
+	 * Get all reference values from a prim spec.
+	 * @returns {string[]} Array of reference strings like "@path@" or "@path@<prim>"
 	 */
-	_getReference( spec ) {
+	_getReferences( spec ) {
+
+		const results = [];
 
 		if ( spec.fields.references && spec.fields.references.length > 0 ) {
 
 			const ref = spec.fields.references[ 0 ];
-			if ( typeof ref === 'string' ) return ref;
-			if ( ref.assetPath ) return '@' + ref.assetPath + '@';
+
+			if ( typeof ref === 'string' ) {
+
+				// Extract all @...@ references (handles both single and array values)
+				const matches = ref.matchAll( /@([^@]+)@(?:<([^>]+)>)?/g );
+				for ( const match of matches ) {
+
+					results.push( match[ 0 ] );
+
+				}
+
+			} else if ( ref.assetPath ) {
+
+				results.push( '@' + ref.assetPath + '@' );
+
+			}
 
 		}
 
-		if ( spec.fields.payload ) {
+		if ( results.length === 0 && spec.fields.payload ) {
 
 			const payload = spec.fields.payload;
-			if ( typeof payload === 'string' ) return payload;
-			if ( payload.assetPath ) return '@' + payload.assetPath + '@';
+			if ( typeof payload === 'string' ) results.push( payload );
+			else if ( payload.assetPath ) results.push( '@' + payload.assetPath + '@' );
 
 		}
 
-		return null;
+		return results;
 
 	}
 
@@ -1070,6 +1172,86 @@ class USDComposer {
 			}
 
 		}
+
+	}
+
+	/**
+	 * Build a mesh from a USD geometric primitive (Cube, Sphere, Cylinder, Cone, Capsule).
+	 */
+	_buildGeomPrimitive( path, spec, typeName ) {
+
+		const attrs = this._getAttributes( path );
+		const name = path.split( '/' ).pop();
+
+		let geometry;
+
+		switch ( typeName ) {
+
+			case 'Cube': {
+
+				const size = attrs[ 'size' ] || 2;
+				geometry = new BoxGeometry( size, size, size );
+				break;
+
+			}
+
+			case 'Sphere': {
+
+				const radius = attrs[ 'radius' ] || 1;
+				geometry = new SphereGeometry( radius, 32, 16 );
+				break;
+
+			}
+
+			case 'Cylinder': {
+
+				const height = attrs[ 'height' ] || 2;
+				const radius = attrs[ 'radius' ] || 1;
+				geometry = new CylinderGeometry( radius, radius, height, 32 );
+				break;
+
+			}
+
+			case 'Cone': {
+
+				const height = attrs[ 'height' ] || 2;
+				const radius = attrs[ 'radius' ] || 1;
+				geometry = new ConeGeometry( radius, height, 32 );
+				break;
+
+			}
+
+			case 'Capsule': {
+
+				const height = attrs[ 'height' ] || 1;
+				const radius = attrs[ 'radius' ] || 0.5;
+				geometry = new CapsuleGeometry( radius, height, 16, 32 );
+				break;
+
+			}
+
+		}
+
+		// USD defaults axis to "Z", Three.js uses Y
+		const axis = attrs[ 'axis' ] || 'Z';
+
+		if ( axis === 'X' ) {
+
+			geometry.rotateZ( - Math.PI / 2 );
+
+		} else if ( axis === 'Z' ) {
+
+			geometry.rotateX( Math.PI / 2 );
+
+		}
+
+		const material = this._buildMaterial( path, spec.fields );
+		const mesh = new Mesh( geometry, material );
+		mesh.name = name;
+
+		this.applyTransform( mesh, spec.fields, attrs );
+
+		return mesh;
 
 	}
 
@@ -1301,6 +1483,122 @@ class USDComposer {
 
 	}
 
+	/**
+	 * Build a light from a UsdLux light spec.
+	 */
+	_buildLight( path, typeName ) {
+
+		const attrs = this._getAttributes( path );
+
+		const intensity = this._parseNumber( attrs[ 'inputs:intensity' ], 1 );
+		const baseColor = attrs[ 'inputs:color' ] || [ 1, 1, 1 ];
+		const enableColorTemperature = attrs[ 'inputs:enableColorTemperature' ] === true;
+		const colorTemperature = this._parseNumber( attrs[ 'inputs:colorTemperature' ], 6500 );
+
+		const color = new Color( baseColor[ 0 ], baseColor[ 1 ], baseColor[ 2 ] );
+
+		if ( enableColorTemperature ) {
+
+			const temp = this._colorTemperature( colorTemperature );
+			color.multiply( temp );
+
+		}
+
+		let light;
+
+		switch ( typeName ) {
+
+			case 'DistantLight':
+				light = new DirectionalLight( color, intensity );
+				break;
+
+			case 'SphereLight': {
+
+				const coneAngle = this._parseNumber( attrs[ 'shaping:cone:angle' ], 0 );
+
+				if ( coneAngle > 0 ) {
+
+					const angle = coneAngle * Math.PI / 180;
+					const softness = this._parseNumber( attrs[ 'shaping:cone:softness' ], 0 );
+					light = new SpotLight( color, intensity, 0, angle, softness );
+
+				} else {
+
+					light = new PointLight( color, intensity );
+
+				}
+
+				break;
+
+			}
+
+			case 'RectLight': {
+
+				const width = this._parseNumber( attrs[ 'inputs:width' ], 1 );
+				const height = this._parseNumber( attrs[ 'inputs:height' ], 1 );
+				light = new RectAreaLight( color, intensity, width, height );
+				break;
+
+			}
+
+			case 'DiskLight': {
+
+				const radius = this._parseNumber( attrs[ 'inputs:radius' ], 0.5 );
+				const side = radius * 2;
+				light = new RectAreaLight( color, intensity, side, side );
+				break;
+
+			}
+
+		}
+
+		return light;
+
+	}
+
+	/**
+	 * Convert a color temperature in Kelvin to an RGB Color.
+	 * Based on Tanner Helland's algorithm.
+	 */
+	_colorTemperature( kelvin ) {
+
+		const temp = kelvin / 100;
+		let r, g, b;
+
+		if ( temp <= 66 ) {
+
+			r = 1;
+			g = 0.39008157876901960784 * Math.log( temp ) - 0.63184144378862745098;
+
+		} else {
+
+			r = 1.29293618606274509804 * Math.pow( temp - 60, - 0.1332047592 );
+			g = 1.12989086089529411765 * Math.pow( temp - 60, - 0.0755148492 );
+
+		}
+
+		if ( temp >= 66 ) {
+
+			b = 1;
+
+		} else if ( temp <= 19 ) {
+
+			b = 0;
+
+		} else {
+
+			b = 0.54320678911019607843 * Math.log( temp - 10 ) - 1.19625408914;
+
+		}
+
+		return new Color(
+			Math.min( Math.max( r, 0 ), 1 ),
+			Math.min( Math.max( g, 0 ), 1 ),
+			Math.min( Math.max( b, 0 ), 1 )
+		);
+
+	}
+
 	_parseNumber( value, fallback ) {
 
 		const n = Number( value );
@@ -1321,7 +1619,7 @@ class USDComposer {
 			if ( ! indices || indices.length === 0 ) continue;
 
 			// Get material binding - check direct path and variant paths
-			let materialPath = this._getMaterialBindingTarget( p );
+			const materialPath = this._getMaterialBindingTarget( p );
 
 			subsets.push( {
 				name: p.split( '/' ).pop(),
@@ -1451,7 +1749,12 @@ class USDComposer {
 
 		} else {
 
-			geometry.computeVertexNormals();
+			// Compute vertex normals from the original indexed topology where
+			// vertices are shared, then expand them like positions.
+			const vertexNormals = this._computeVertexNormals( points, indices );
+			geometry.setAttribute( 'normal', new BufferAttribute( new Float32Array(
+				this._expandAttribute( vertexNormals, indices, 3 )
+			), 3 ) );
 
 		}
 
@@ -1545,25 +1848,7 @@ class USDComposer {
 				const skinIndices = new Uint16Array( numVertices * 4 );
 				const skinWeights = new Float32Array( numVertices * 4 );
 
-				for ( let i = 0; i < numVertices; i ++ ) {
-
-					for ( let j = 0; j < 4; j ++ ) {
-
-						if ( j < elementSize ) {
-
-							skinIndices[ i * 4 + j ] = skinIndexData[ i * elementSize + j ] || 0;
-							skinWeights[ i * 4 + j ] = skinWeightData[ i * elementSize + j ] || 0;
-
-						} else {
-
-							skinIndices[ i * 4 + j ] = 0;
-							skinWeights[ i * 4 + j ] = 0;
-
-						}
-
-					}
-
-				}
+				this._selectTopWeights( skinIndexData, skinWeightData, elementSize, numVertices, skinIndices, skinWeights );
 
 				geometry.setAttribute( 'skinIndex', new BufferAttribute( skinIndices, 4 ) );
 				geometry.setAttribute( 'skinWeight', new BufferAttribute( skinWeights, 4 ) );
@@ -1715,10 +2000,17 @@ class USDComposer {
 
 		// Triangulate original data using consistent pattern
 		const { indices: origIndices, pattern: triPattern } = this._triangulateIndicesWithPattern( faceVertexIndices, faceVertexCounts, points, holeMap );
-		const origUvIndices = uvIndices ? this._applyTriangulationPattern( uvIndices, triPattern ) : null;
-		const origUv2Indices = uv2Indices ? this._applyTriangulationPattern( uv2Indices, triPattern ) : null;
-
 		const numFaceVertices = faceVertexCounts.reduce( ( a, b ) => a + b, 0 );
+		const faceVaryingIdentity = ( uvs && ! uvIndices && uvs.length / 2 === numFaceVertices ) ||
+			( uvs2 && ! uv2Indices && uvs2.length / 2 === numFaceVertices )
+			? this._applyTriangulationPattern( Array.from( { length: numFaceVertices }, ( _, i ) => i ), triPattern )
+			: null;
+		const origUvIndices = uvIndices
+			? this._applyTriangulationPattern( uvIndices, triPattern )
+			: ( uvs && uvs.length / 2 === numFaceVertices ? faceVaryingIdentity : null );
+		const origUv2Indices = uv2Indices
+			? this._applyTriangulationPattern( uv2Indices, triPattern )
+			: ( uvs2 && uvs2.length / 2 === numFaceVertices ? faceVaryingIdentity : null );
 		const hasIndexedNormals = normals && normalIndicesRaw && normalIndicesRaw.length > 0;
 		const hasFaceVaryingNormals = normals && normals.length / 3 === numFaceVertices;
 		const origNormalIndices = hasIndexedNormals
@@ -1727,14 +2019,20 @@ class USDComposer {
 				? this._applyTriangulationPattern( Array.from( { length: numFaceVertices }, ( _, i ) => i ), triPattern )
 				: null );
 
+		// When no normals are provided, compute vertex normals from
+		// the indexed topology so that shared vertices produce averaged normals.
+		const vertexNormals = ( ! normals && origIndices.length > 0 )
+			? this._computeVertexNormals( points, origIndices )
+			: null;
+
 		// Build reordered vertex data
 		const vertexCount = triangleCount * 3;
 		const positions = new Float32Array( vertexCount * 3 );
 		const uvData = uvs ? new Float32Array( vertexCount * 2 ) : null;
 		const uv1Data = uvs2 ? new Float32Array( vertexCount * 2 ) : null;
-		const normalData = normals ? new Float32Array( vertexCount * 3 ) : null;
-		const skinIndexData = jointIndices ? new Uint16Array( vertexCount * 4 ) : null;
-		const skinWeightData = jointWeights ? new Float32Array( vertexCount * 4 ) : null;
+		const normalData = ( normals || vertexNormals ) ? new Float32Array( vertexCount * 3 ) : null;
+		const skinSrcIndices = jointIndices ? new Uint16Array( vertexCount * elementSize ) : null;
+		const skinSrcWeights = jointWeights ? new Float32Array( vertexCount * elementSize ) : null;
 
 		for ( let i = 0; i < sortedTriangles.length; i ++ ) {
 
@@ -1784,40 +2082,37 @@ class USDComposer {
 
 				}
 
-				if ( normalData && normals ) {
+				if ( normalData ) {
 
-					if ( origNormalIndices ) {
+					if ( normals && origNormalIndices ) {
 
 						const normalIdx = origNormalIndices[ origIdx ];
 						normalData[ newIdx * 3 ] = normals[ normalIdx * 3 ];
 						normalData[ newIdx * 3 + 1 ] = normals[ normalIdx * 3 + 1 ];
 						normalData[ newIdx * 3 + 2 ] = normals[ normalIdx * 3 + 2 ];
 
-					} else if ( normals.length === points.length ) {
+					} else if ( normals && normals.length === points.length ) {
 
 						normalData[ newIdx * 3 ] = normals[ pointIdx * 3 ];
 						normalData[ newIdx * 3 + 1 ] = normals[ pointIdx * 3 + 1 ];
 						normalData[ newIdx * 3 + 2 ] = normals[ pointIdx * 3 + 2 ];
 
+					} else if ( vertexNormals ) {
+
+						normalData[ newIdx * 3 ] = vertexNormals[ pointIdx * 3 ];
+						normalData[ newIdx * 3 + 1 ] = vertexNormals[ pointIdx * 3 + 1 ];
+						normalData[ newIdx * 3 + 2 ] = vertexNormals[ pointIdx * 3 + 2 ];
+
 					}
 
 				}
 
-				if ( skinIndexData && skinWeightData && jointIndices && jointWeights ) {
+				if ( skinSrcIndices && skinSrcWeights && jointIndices && jointWeights ) {
 
-					for ( let j = 0; j < 4; j ++ ) {
+					for ( let j = 0; j < elementSize; j ++ ) {
 
-						if ( j < elementSize ) {
-
-							skinIndexData[ newIdx * 4 + j ] = jointIndices[ pointIdx * elementSize + j ] || 0;
-							skinWeightData[ newIdx * 4 + j ] = jointWeights[ pointIdx * elementSize + j ] || 0;
-
-						} else {
-
-							skinIndexData[ newIdx * 4 + j ] = 0;
-							skinWeightData[ newIdx * 4 + j ] = 0;
-
-						}
+						skinSrcIndices[ newIdx * elementSize + j ] = jointIndices[ pointIdx * elementSize + j ] || 0;
+						skinSrcWeights[ newIdx * elementSize + j ] = jointWeights[ pointIdx * elementSize + j ] || 0;
 
 					}
 
@@ -1841,29 +2136,117 @@ class USDComposer {
 
 		}
 
-		if ( normalData ) {
+		geometry.setAttribute( 'normal', new BufferAttribute( normalData, 3 ) );
 
-			geometry.setAttribute( 'normal', new BufferAttribute( normalData, 3 ) );
+		if ( skinSrcIndices && skinSrcWeights ) {
 
-		} else {
+			const skinIndexData = new Uint16Array( vertexCount * 4 );
+			const skinWeightData = new Float32Array( vertexCount * 4 );
 
-			geometry.computeVertexNormals();
-
-		}
-
-		if ( skinIndexData ) {
+			this._selectTopWeights( skinSrcIndices, skinSrcWeights, elementSize, vertexCount, skinIndexData, skinWeightData );
 
 			geometry.setAttribute( 'skinIndex', new BufferAttribute( skinIndexData, 4 ) );
-
-		}
-
-		if ( skinWeightData ) {
-
 			geometry.setAttribute( 'skinWeight', new BufferAttribute( skinWeightData, 4 ) );
 
 		}
 
 		return geometry;
+
+	}
+
+	_selectTopWeights( srcIndices, srcWeights, elementSize, numVertices, dstIndices, dstWeights ) {
+
+		if ( elementSize <= 4 ) {
+
+			for ( let i = 0; i < numVertices; i ++ ) {
+
+				for ( let j = 0; j < 4; j ++ ) {
+
+					if ( j < elementSize ) {
+
+						dstIndices[ i * 4 + j ] = srcIndices[ i * elementSize + j ] || 0;
+						dstWeights[ i * 4 + j ] = srcWeights[ i * elementSize + j ] || 0;
+
+					} else {
+
+						dstIndices[ i * 4 + j ] = 0;
+						dstWeights[ i * 4 + j ] = 0;
+
+					}
+
+				}
+
+			}
+
+			return;
+
+		}
+
+		// When elementSize > 4, find the 4 largest weights per vertex
+		// using a partial selection sort (4 iterations of O(elementSize)).
+		const order = new Uint32Array( elementSize );
+
+		for ( let i = 0; i < numVertices; i ++ ) {
+
+			const base = i * elementSize;
+
+			for ( let j = 0; j < elementSize; j ++ ) order[ j ] = j;
+
+			for ( let k = 0; k < 4; k ++ ) {
+
+				let maxIdx = k;
+				let maxW = srcWeights[ base + order[ k ] ] || 0;
+
+				for ( let j = k + 1; j < elementSize; j ++ ) {
+
+					const w = srcWeights[ base + order[ j ] ] || 0;
+
+					if ( w > maxW ) {
+
+						maxW = w;
+						maxIdx = j;
+
+					}
+
+				}
+
+				if ( maxIdx !== k ) {
+
+					const tmp = order[ k ];
+					order[ k ] = order[ maxIdx ];
+					order[ maxIdx ] = tmp;
+
+				}
+
+			}
+
+			let total = 0;
+
+			for ( let j = 0; j < 4; j ++ ) {
+
+				total += srcWeights[ base + order[ j ] ] || 0;
+
+			}
+
+			for ( let j = 0; j < 4; j ++ ) {
+
+				const s = order[ j ];
+
+				if ( total > 0 ) {
+
+					dstIndices[ i * 4 + j ] = srcIndices[ base + s ] || 0;
+					dstWeights[ i * 4 + j ] = ( srcWeights[ base + s ] || 0 ) / total;
+
+				} else {
+
+					dstIndices[ i * 4 + j ] = 0;
+					dstWeights[ i * 4 + j ] = 0;
+
+				}
+
+			}
+
+		}
 
 	}
 
@@ -2353,12 +2736,63 @@ class USDComposer {
 	}
 
 	/**
+	 * Compute per-vertex normals from indexed triangle data.
+	 * Accumulates area-weighted face normals at each shared vertex and normalizes.
+	 */
+	_computeVertexNormals( points, indices ) {
+
+		const numVertices = points.length / 3;
+		const normals = new Float32Array( numVertices * 3 );
+
+		for ( let i = 0; i < indices.length; i += 3 ) {
+
+			const a = indices[ i ];
+			const b = indices[ i + 1 ];
+			const c = indices[ i + 2 ];
+
+			const ax = points[ a * 3 ], ay = points[ a * 3 + 1 ], az = points[ a * 3 + 2 ];
+			const bx = points[ b * 3 ], by = points[ b * 3 + 1 ], bz = points[ b * 3 + 2 ];
+			const cx = points[ c * 3 ], cy = points[ c * 3 + 1 ], cz = points[ c * 3 + 2 ];
+
+			const e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+			const e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+
+			const nx = e1y * e2z - e1z * e2y;
+			const ny = e1z * e2x - e1x * e2z;
+			const nz = e1x * e2y - e1y * e2x;
+
+			normals[ a * 3 ] += nx; normals[ a * 3 + 1 ] += ny; normals[ a * 3 + 2 ] += nz;
+			normals[ b * 3 ] += nx; normals[ b * 3 + 1 ] += ny; normals[ b * 3 + 2 ] += nz;
+			normals[ c * 3 ] += nx; normals[ c * 3 + 1 ] += ny; normals[ c * 3 + 2 ] += nz;
+
+		}
+
+		for ( let i = 0; i < numVertices; i ++ ) {
+
+			const x = normals[ i * 3 ], y = normals[ i * 3 + 1 ], z = normals[ i * 3 + 2 ];
+			const len = Math.sqrt( x * x + y * y + z * z );
+
+			if ( len > 0 ) {
+
+				normals[ i * 3 ] /= len;
+				normals[ i * 3 + 1 ] /= len;
+				normals[ i * 3 + 2 ] /= len;
+
+			}
+
+		}
+
+		return normals;
+
+	}
+
+	/**
 	 * Get the material path for a mesh, checking various binding sources.
 	 */
 	_getMaterialPath( meshPath, fields ) {
 
 		let materialPath = null;
-		let materialBinding = fields[ 'material:binding' ];
+		const materialBinding = fields[ 'material:binding' ];
 
 		if ( materialBinding ) {
 
@@ -2382,7 +2816,7 @@ class USDComposer {
 		const material = new MeshPhysicalMaterial();
 
 		let materialPath = null;
-		let materialBinding = fields[ 'material:binding' ];
+		const materialBinding = fields[ 'material:binding' ];
 
 		if ( materialBinding ) {
 
@@ -2550,7 +2984,7 @@ class USDComposer {
 			const shaderAttrs = this._getAttributes( path );
 			const infoId = shaderAttrs[ 'info:id' ] || spec.fields[ 'info:id' ];
 
-			if ( infoId === 'UsdPreviewSurface' ) {
+			if ( infoId === 'UsdPreviewSurface' || infoId === 'ND_UsdPreviewSurface_surfaceshader' ) {
 
 				this._applyPreviewSurface( material, path );
 
@@ -3385,6 +3819,16 @@ class USDComposer {
 
 			}
 
+			// Standalone .usd/.usda/.usdc files don't pre-load assets; treat the
+			// resolved path as a URL relative to basePath so the browser fetches
+			// the texture from disk next to the layer.
+
+			if ( this.basePath ) {
+
+				return this._createTextureFromData( resolvedPath, textureAttrs, transformAttrs );
+
+			}
+
 			// Try loading via LoadingManager if available
 			if ( this.manager ) {
 
@@ -3432,27 +3876,49 @@ class USDComposer {
 		}
 
 		const image = new Image();
-		image.onload = function () {
 
-			texture.image = image;
+		this.texturePromises.push( new Promise( ( resolve ) => {
 
-			if ( textureAttrs ) {
+			image.onload = function () {
 
-				texture.wrapS = scope._getWrapMode( textureAttrs[ 'inputs:wrapS' ] );
-				texture.wrapT = scope._getWrapMode( textureAttrs[ 'inputs:wrapT' ] );
+				texture.image = image;
 
-			}
+				if ( textureAttrs ) {
 
-			scope._applyTextureTransforms( texture, transformAttrs );
-			texture.needsUpdate = true;
+					texture.wrapS = scope._getWrapMode( textureAttrs[ 'inputs:wrapS' ] );
+					texture.wrapT = scope._getWrapMode( textureAttrs[ 'inputs:wrapT' ] );
 
-			if ( typeof data !== 'string' ) {
+				}
 
-				URL.revokeObjectURL( url );
+				scope._applyTextureTransforms( texture, transformAttrs );
+				texture.needsUpdate = true;
 
-			}
+				if ( typeof data !== 'string' ) {
 
-		};
+					URL.revokeObjectURL( url );
+
+				}
+
+				resolve();
+
+			};
+
+			image.onerror = function () {
+
+				console.warn( 'USDLoader: Failed to load texture:', url );
+
+				if ( typeof data !== 'string' ) {
+
+					URL.revokeObjectURL( url );
+
+				}
+
+				resolve();
+
+			};
+
+		} ) );
+
 		image.src = url;
 
 		return texture;
@@ -3547,13 +4013,15 @@ class USDComposer {
 
 		}
 
-		// Apply rest transforms to bones (local transforms)
+		// Apply rest transforms as bone local transforms.
+		// Rest transforms are the skeleton's default local-space pose and match
+		// the reference frame used by SkelAnimation data. Bind transforms are
+		// world-space matrices used only for computing inverse bind matrices.
 		if ( restTransforms && restTransforms.length >= joints.length * 16 ) {
 
 			for ( let i = 0; i < joints.length; i ++ ) {
 
 				const matrix = new Matrix4();
-				// USD matrices are row-major, Three.js is column-major - need to transpose
 				const m = restTransforms.slice( i * 16, ( i + 1 ) * 16 );
 				matrix.set(
 					m[ 0 ], m[ 4 ], m[ 8 ], m[ 12 ],
@@ -3680,7 +4148,7 @@ class USDComposer {
 			// Use geomBindTransform if available, otherwise fall back to identity.
 			// Estimating bind transforms from vertex/joint samples is not robust and can
 			// produce severe skinning distortion for valid assets.
-			let bindMatrix = new Matrix4();
+			const bindMatrix = new Matrix4();
 
 			if ( geomBindTransform && geomBindTransform.length === 16 ) {
 

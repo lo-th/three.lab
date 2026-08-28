@@ -31,6 +31,8 @@ export class Sprites extends THREE.Sprite {
 
 		this.material = new THREE.SpriteNodeMaterial( { sizeAttenuation: true, alphaTest: 0.1 } );
 
+		//console.log(this.material.transparent)
+
 
 		const self = this
 

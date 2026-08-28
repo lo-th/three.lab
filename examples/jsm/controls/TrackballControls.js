@@ -281,7 +281,7 @@ class TrackballControls extends Controls {
 		this.domElement.addEventListener( 'wheel', this._onMouseWheel, { passive: false } );
 		this.domElement.addEventListener( 'contextmenu', this._onContextMenu );
 
-		this.domElement.style.touchAction = 'none'; // disable touch scroll
+		this.domElement.style.touchAction = 'none'; // Disable touch scroll
 
 	}
 
@@ -297,7 +297,7 @@ class TrackballControls extends Controls {
 		this.domElement.removeEventListener( 'wheel', this._onMouseWheel );
 		this.domElement.removeEventListener( 'contextmenu', this._onContextMenu );
 
-		this.domElement.style.touchAction = 'auto'; // disable touch scroll
+		this.domElement.style.touchAction = ''; // Restore touch scroll
 
 	}
 
@@ -839,7 +839,6 @@ function onMouseMove( event ) {
 
 	if ( state === _STATE.ROTATE && ! this.noRotate ) {
 
-		this._movePrev.copy( this._moveCurr );
 		this._moveCurr.copy( this._getMouseOnCircle( event.pageX, event.pageY ) );
 
 	} else if ( state === _STATE.ZOOM && ! this.noZoom ) {
@@ -939,7 +938,6 @@ function onTouchMove( event ) {
 	switch ( this._pointers.length ) {
 
 		case 1:
-			this._movePrev.copy( this._moveCurr );
 			this._moveCurr.copy( this._getMouseOnCircle( event.pageX, event.pageY ) );
 			break;
 
